@@ -54,6 +54,28 @@ npm run dev
 
 Open the local URL printed by Vite, usually [http://localhost:5173](http://localhost:5173).
 
+## Supabase Setup
+
+The app now supports two storage modes:
+
+- local browser storage by default
+- Supabase cloud storage when env vars are configured
+
+1. Create a Supabase project
+2. Copy `.env.example` to `.env.local`
+3. Fill in:
+
+```env
+VITE_SUPABASE_URL=your_project_url
+VITE_SUPABASE_PUBLISHABLE_KEY=your_publishable_key
+```
+
+4. In the Supabase SQL editor, run the schema from `supabase-schema.sql`
+5. Restart the dev server
+6. Sign in with the magic-link form shown at the top of the app
+
+With Supabase configured, tasks are stored per user in the `tasks` table. Without it, the app falls back to `localStorage`.
+
 ## Build
 
 ```bash

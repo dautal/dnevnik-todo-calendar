@@ -11,8 +11,8 @@
   --paper: #ffffff;
   --ink: #111111;
   --muted: #666666;
-  --line: #e6e6e6;
-  --line-strong: #cccccc;
+  --line: #d4d4d4;
+  --line-strong: #b8b8b8;
   --accent: #111111;
 }
 
@@ -28,6 +28,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -44,6 +45,123 @@ button {
   max-width: 1440px;
   margin: 0 auto;
   padding: 8px 12px 16px;
+}
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.auth-card {
+  width: min(480px, 100%);
+  border: 1px solid var(--line-strong);
+  padding: 24px;
+  background: #ffffff;
+}
+
+.auth-title {
+  font-size: 1.4rem;
+  line-height: 1.15;
+  margin: 6px 0 10px;
+}
+
+.auth-copy {
+  margin: 0 0 16px;
+  color: var(--muted);
+}
+
+.storage-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.storage-label {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.storage-copy {
+  margin: 2px 0 0;
+  font-size: 0.86rem;
+}
+
+.auth-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auth-form-vertical {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.auth-panel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.auth-input {
+  border: 1px solid var(--line-strong);
+  padding: 8px 10px;
+  min-width: 180px;
+  background: #ffffff;
+  color: var(--ink);
+}
+
+.auth-input:focus {
+  outline: none;
+  background: #f7f7f7;
+}
+
+.oauth-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.oauth-group-vertical {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.auth-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.auth-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 16px 0;
+}
+
+.auth-status {
+  margin-top: 16px;
+ }
+
+.status-banner {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  font-size: 0.84rem;
+}
+
+.status-banner-error {
+  border-color: #111111;
 }
 
 .eyebrow,
@@ -116,7 +234,7 @@ h1 {
 .spread {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 20px;
 }
 
 .page-sheet {
@@ -148,18 +266,15 @@ h1 {
 
 .day-stack {
   display: grid;
-  gap: 0;
+  gap: 14px;
 }
 
 .day-section {
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr);
-  border-bottom: 1px solid var(--line);
+  border: 1px solid var(--line);
   background: #ffffff;
-}
-
-.day-section:last-child {
-  border-bottom: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.02);
 }
 
 .day-label-rail {
@@ -168,6 +283,10 @@ h1 {
   justify-content: center;
   border-right: 1px solid var(--line);
   padding: 4px 0;
+}
+
+.day-label-rail.is-active {
+  background: #c4dcff;
 }
 
 .day-label-rail-inner {
@@ -213,12 +332,32 @@ h1 {
   border-bottom: none;
 }
 
+.add-row-button {
+  border: none;
+  border-top: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--muted);
+  text-align: left;
+  padding: 8px 10px;
+}
+
+.add-row-button:hover,
+.add-row-button:focus {
+  background: #f7f7f7;
+  outline: none;
+}
+
 .task-grid-head {
   min-height: 24px;
   font-size: 0.66rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
+}
+
+.task-grid-head.is-active {
+  background: #c4dcff;
+  color: #1e4678;
 }
 
 .task-grid-row > span,
@@ -244,6 +383,7 @@ h1 {
   padding: 0 8px;
   border-right: 1px solid var(--line);
   color: var(--ink);
+  font-weight: 600;
 }
 
 .notes-trigger {
@@ -256,6 +396,7 @@ h1 {
   text-align: left;
   padding: 0 8px;
   overflow: hidden;
+  font-weight: 400;
 }
 
 .notes-trigger:hover,
@@ -344,6 +485,97 @@ h1 {
   overflow: auto;
 }
 
+.calendar-dialog {
+  width: min(1120px, 100%);
+  max-height: 88vh;
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  background: #ffffff;
+  padding: 14px;
+}
+
+.calendar-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.calendar-dialog-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.calendar-month {
+  border: 1px solid var(--line);
+  padding: 10px;
+}
+
+.calendar-month-title {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.calendar-weekdays,
+.calendar-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.calendar-weekdays {
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.calendar-weekdays span,
+.calendar-week span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+}
+
+.calendar-weeks {
+  display: grid;
+  gap: 2px;
+}
+
+.calendar-week {
+  border: 1px solid transparent;
+  background: #ffffff;
+  padding: 2px;
+}
+
+.calendar-week:hover,
+.calendar-week:focus {
+  border-color: var(--line-strong);
+  outline: none;
+}
+
+.calendar-week.is-selected {
+  border-color: #111111;
+}
+
+.calendar-week.is-current {
+  background: #f5f5f5;
+}
+
+.calendar-week .is-outside-month {
+  color: #b4b4b4;
+}
+
 .notes-dialog-header {
   display: flex;
   justify-content: space-between;
@@ -370,7 +602,6 @@ h1 {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  margin-bottom: 10px;
 }
 
 .toolbar-button {
@@ -410,13 +641,38 @@ h1 {
   margin: 0 0 10px;
 }
 
+.notes-dialog-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
 .planner-caption {
   display: none;
 }
 
 @media (max-width: 1040px) {
+  .storage-bar,
+  .auth-panel,
+  .auth-form,
+  .oauth-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .top-actions-group {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
   .spread {
     grid-template-columns: 1fr;
+  }
+
+  .calendar-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -435,6 +691,19 @@ h1 {
 
   .day-grid .task-grid-row {
     grid-template-columns: 34px minmax(0, 1.1fr) minmax(0, 0.85fr) 48px;
+  }
+
+  .calendar-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-actions {
+    flex-direction: column;
+  }
+
+  .notes-dialog-footer {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 
