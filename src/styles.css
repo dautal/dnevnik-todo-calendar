@@ -436,6 +436,15 @@ button {
   align-items: stretch;
 }
 
+.auth-oauth-primary {
+  margin-top: 18px;
+}
+
+.auth-google-button {
+  min-height: 44px;
+  font-weight: 600;
+}
+
 .auth-actions {
   display: flex;
   gap: 8px;

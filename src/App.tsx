@@ -153,6 +153,8 @@ const UI_TEXT = {
     appName: 'Dnevnik Todo Calendar',
     authTitle: 'Sign in to sync your weekly planner',
     authCopy: 'Your tasks, notes, and weekly spreads will be stored in Supabase and tied to your account.',
+    inviteOnlyAuthTitle: 'Invite-only beta access',
+    inviteOnlyAuthCopy: 'Sign in with an approved Google account to open your planner. Unapproved accounts will be signed out automatically.',
     email: 'Email',
     password: 'Password',
     working: 'Working...',
@@ -160,6 +162,7 @@ const UI_TEXT = {
     signUp: 'Sign up',
     continueWithGoogle: 'Continue with Google',
     continueWithGithub: 'Continue with GitHub',
+    inviteOnlyMessage: 'This beta is invite-only. Ask for access before signing in.',
     signedInAs: (email: string) => `Signed in as ${email}.`,
     accountCreated: (email: string) => `Account created for ${email}. Check your email if confirmation is required.`,
     task: 'Task',
@@ -241,6 +244,8 @@ const UI_TEXT = {
     appName: 'Dnevnik Todo Calendar',
     authTitle: 'Войдите, чтобы синхронизировать ваш еженедельник',
     authCopy: 'Ваши задачи, заметки и недельные развороты будут храниться в Supabase и привязаны к аккаунту.',
+    inviteOnlyAuthTitle: 'Бета-доступ по приглашению',
+    inviteOnlyAuthCopy: 'Войдите через одобренный Google-аккаунт, чтобы открыть планер. Неодобренные аккаунты будут автоматически выходить из системы.',
     email: 'Почта',
     password: 'Пароль',
     working: 'Загрузка...',
@@ -248,6 +253,7 @@ const UI_TEXT = {
     signUp: 'Регистрация',
     continueWithGoogle: 'Продолжить через Google',
     continueWithGithub: 'Продолжить через GitHub',
+    inviteOnlyMessage: 'Это закрытая бета по приглашениям. Сначала добавьте почту в список доступа.',
     signedInAs: (email: string) => `Вы вошли как ${email}.`,
     accountCreated: (email: string) => `Аккаунт для ${email} создан. Проверьте почту, если требуется подтверждение.`,
     task: 'Задача',
@@ -871,6 +877,24 @@ function isPresetStatus(status: RowStatus) {
   return status === 'none' || status === 'low' || status === 'urgent' || status === 'critical' || status === 'done';
 }
 
+function parseAllowedEmails(raw: string | undefined) {
+  return new Set(
+    (raw ?? '')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+function isAllowedBetaUser(user: User | null, allowedEmails: Set<string>) {
+  if (!user || allowedEmails.size === 0) {
+    return true;
+  }
+
+  const email = user.email?.trim().toLowerCase();
+  return Boolean(email && allowedEmails.has(email));
+}
+
 const DETAIL_COLORS: DetailColor[] = ['default', 'blue', 'green', 'amber', 'pink', 'violet'];
 
 const PRESET_PRIORITY_OPTIONS = ['none', 'low', 'urgent', 'critical', 'done'] as const;
@@ -927,6 +951,8 @@ function App() {
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const previousWeekStartRef = useRef(weekStart);
   const ui = UI_TEXT[language];
+  const allowedEmails = useMemo(() => parseAllowedEmails(import.meta.env.VITE_ALLOWED_EMAILS), []);
+  const isInviteOnlyBeta = allowedEmails.size > 0;
   const weekKey = formatWeekKey(weekStart);
   const yearMonths = useMemo(
     () => MONTH_NAMES.map((_, monthIndex) => getMonthCalendar(visibleYear, monthIndex, language)),
@@ -941,6 +967,18 @@ function App() {
   const defaultPlannerTitle = useMemo(() => getPlannerTitle(user, language), [user, language]);
   const plannerTitle = plannerTitleOverride || defaultPlannerTitle;
   const miscTasks = miscTasksByWeek[weekKey] ?? [];
+
+  async function enforceInviteOnly(nextUser: User | null) {
+    if (isAllowedBetaUser(nextUser, allowedEmails)) {
+      setAuthMessage('');
+      return nextUser;
+    }
+
+    setAuthMessage(ui.inviteOnlyMessage);
+    setUser(null);
+    await supabase?.auth.signOut();
+    return null;
+  }
 
   useEffect(() => {
     // Hydrate all local-only state first so the app is usable immediately, even before
@@ -978,18 +1016,31 @@ function App() {
 
     let mounted = true;
 
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(async ({ data }) => {
       if (!mounted) {
         return;
       }
 
-      setUser(data.session?.user ?? null);
+      const nextUser = await enforceInviteOnly(data.session?.user ?? null);
+
+      if (!mounted) {
+        return;
+      }
+
+      setUser(nextUser);
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setUser(nextSession?.user ?? null);
+      void (async () => {
+        const nextUser = await enforceInviteOnly(nextSession?.user ?? null);
+        if (!mounted) {
+          return;
+        }
+
+        setUser(nextUser);
+      })();
     });
 
     return () => {
@@ -1771,31 +1822,6 @@ function App() {
     setIsAuthLoading(false);
   }
 
-  async function signUpWithPassword() {
-    if (!supabase || !authEmail.trim() || !authPassword) {
-      return;
-    }
-
-    setIsAuthLoading(true);
-    setAuthMessage('');
-
-    const { error } = await supabase.auth.signUp({
-      email: authEmail.trim(),
-      password: authPassword,
-      options: {
-        emailRedirectTo: window.location.origin,
-      },
-    });
-
-    if (error) {
-      setAuthMessage(error.message);
-    } else {
-      setAuthMessage(ui.accountCreated(authEmail.trim()));
-    }
-
-    setIsAuthLoading(false);
-  }
-
   async function signInWithProvider(provider: 'google' | 'github') {
     if (!supabase) {
       return;
@@ -1832,11 +1858,11 @@ function App() {
         authPassword={authPassword}
         authMessage={authMessage}
         isAuthLoading={isAuthLoading}
+        isInviteOnlyBeta={isInviteOnlyBeta}
         ui={ui}
         onEmailChange={setAuthEmail}
         onPasswordChange={setAuthPassword}
         onSignIn={signInWithPassword}
-        onSignUp={signUpWithPassword}
         onOAuth={(provider) => void signInWithProvider(provider)}
       />
     );
@@ -2221,11 +2247,11 @@ type AuthScreenProps = {
   authPassword: string;
   authMessage: string;
   isAuthLoading: boolean;
+  isInviteOnlyBeta: boolean;
   ui: UiText;
   onEmailChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
   onSignIn: () => void;
-  onSignUp: () => void;
   onOAuth: (provider: 'google' | 'github') => void;
 };
 
@@ -2234,55 +2260,53 @@ function AuthScreen({
   authPassword,
   authMessage,
   isAuthLoading,
+  isInviteOnlyBeta,
   ui,
   onEmailChange,
   onPasswordChange,
   onSignIn,
-  onSignUp,
   onOAuth,
 }: AuthScreenProps) {
   return (
     <div className="auth-page">
       <section className="auth-card">
         <p className="storage-label">{ui.appName}</p>
-        <h1 className="auth-title">{ui.authTitle}</h1>
-        <p className="auth-copy">{ui.authCopy}</p>
+        <h1 className="auth-title">{isInviteOnlyBeta ? ui.inviteOnlyAuthTitle : ui.authTitle}</h1>
+        <p className="auth-copy">{isInviteOnlyBeta ? ui.inviteOnlyAuthCopy : ui.authCopy}</p>
 
-        <div className="auth-form auth-form-vertical">
-          <input
-            className="auth-input"
-            type="email"
-            value={authEmail}
-            onChange={(event) => onEmailChange(event.target.value)}
-            placeholder={ui.email}
-          />
-          <input
-            className="auth-input"
-            type="password"
-            value={authPassword}
-            onChange={(event) => onPasswordChange(event.target.value)}
-            placeholder={ui.password}
-          />
-          <div className="auth-actions">
-            <button type="button" className="nav-button" onClick={onSignIn} disabled={isAuthLoading}>
-              {isAuthLoading ? ui.working : ui.signIn}
-            </button>
-            <button type="button" className="nav-button" onClick={onSignUp} disabled={isAuthLoading}>
-              {ui.signUp}
-            </button>
-          </div>
-        </div>
-
-        <div className="auth-divider" />
-
-        <div className="oauth-group oauth-group-vertical">
-          <button type="button" className="nav-button" onClick={() => onOAuth('google')}>
+        <div className="oauth-group oauth-group-vertical auth-oauth-primary">
+          <button type="button" className="nav-button nav-button-primary auth-google-button" onClick={() => onOAuth('google')}>
             {ui.continueWithGoogle}
           </button>
-          <button type="button" className="nav-button" onClick={() => onOAuth('github')}>
-            {ui.continueWithGithub}
-          </button>
         </div>
+
+        {isInviteOnlyBeta ? null : (
+          <>
+            <div className="auth-divider" />
+
+            <div className="auth-form auth-form-vertical">
+              <input
+                className="auth-input"
+                type="email"
+                value={authEmail}
+                onChange={(event) => onEmailChange(event.target.value)}
+                placeholder={ui.email}
+              />
+              <input
+                className="auth-input"
+                type="password"
+                value={authPassword}
+                onChange={(event) => onPasswordChange(event.target.value)}
+                placeholder={ui.password}
+              />
+              <div className="auth-actions">
+                <button type="button" className="nav-button" onClick={onSignIn} disabled={isAuthLoading}>
+                  {isAuthLoading ? ui.working : ui.signIn}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
 
         {authMessage ? <p className="status-banner auth-status">{authMessage}</p> : null}
       </section>
