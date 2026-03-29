@@ -1571,6 +1571,11 @@ h1 {
   box-shadow: var(--focus-ring);
 }
 
+.priority-menu-item.is-active {
+  border-color: var(--line-strong);
+  box-shadow: var(--focus-ring);
+}
+
 .priority-menu-item.status-none {
   color: var(--muted);
 }

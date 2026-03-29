@@ -175,6 +175,7 @@ const UI_TEXT = {
     statusUrgent: 'Urgent',
     statusCritical: 'Critical',
     statusDone: 'Done',
+    priorityApply: 'Apply',
     time: 'Time',
     customStatusTitle: 'Custom detail',
     customStatusPlaceholder: 'Enter a custom detail',
@@ -262,6 +263,7 @@ const UI_TEXT = {
     statusUrgent: 'Срочно',
     statusCritical: 'Критично',
     statusDone: 'Сделано',
+    priorityApply: 'Применить',
     time: 'Время',
     customStatusTitle: 'Своя деталь',
     customStatusPlaceholder: 'Введите свою деталь',
@@ -2593,17 +2595,36 @@ function CustomStatusDialog({ activeStatusEditor, ui, onClose, onSave }: CustomS
 }
 
 function PriorityDialog({ activePriorityPicker, ui, onClose, onSelect, onCustom }: PriorityDialogProps) {
+  const initialSelection = PRESET_PRIORITY_OPTIONS.includes(activePriorityPicker.value as (typeof PRESET_PRIORITY_OPTIONS)[number])
+    ? (activePriorityPicker.value as (typeof PRESET_PRIORITY_OPTIONS)[number])
+    : null;
+  const [selectedOption, setSelectedOption] = useState<(typeof PRESET_PRIORITY_OPTIONS)[number] | null>(initialSelection);
+
+  useEffect(() => {
+    setSelectedOption(
+      PRESET_PRIORITY_OPTIONS.includes(activePriorityPicker.value as (typeof PRESET_PRIORITY_OPTIONS)[number])
+        ? (activePriorityPicker.value as (typeof PRESET_PRIORITY_OPTIONS)[number])
+        : null,
+    );
+  }, [activePriorityPicker]);
+
   useEffect(() => {
     function handleKeydown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         event.preventDefault();
         onClose();
+        return;
+      }
+
+      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && selectedOption) {
+        event.preventDefault();
+        onSelect(selectedOption);
       }
     }
 
     document.addEventListener('keydown', handleKeydown);
     return () => document.removeEventListener('keydown', handleKeydown);
-  }, [onClose]);
+  }, [onClose, onSelect, selectedOption]);
 
   const currentValue = activePriorityPicker.value === 'none' ? ui.statusSet : activePriorityPicker.value;
 
@@ -2627,8 +2648,10 @@ function PriorityDialog({ activePriorityPicker, ui, onClose, onSelect, onCustom 
             <button
               key={option}
               type="button"
-              className={`priority-menu-item status-${option === 'none' ? 'none' : option}`}
-              onClick={() => onSelect(option)}
+              className={`priority-menu-item status-${option === 'none' ? 'none' : option} ${
+                selectedOption === option ? 'is-active' : ''
+              }`}
+              onClick={() => setSelectedOption(option)}
             >
               {option === 'none'
                 ? ui.statusNone
@@ -2643,6 +2666,15 @@ function PriorityDialog({ activePriorityPicker, ui, onClose, onSelect, onCustom 
           ))}
           <button type="button" className="priority-menu-item detail-custom" onClick={onCustom}>
             {ui.statusCustom}
+          </button>
+        </div>
+
+        <div className="meta-dialog-actions">
+          <button type="button" className="nav-button" onClick={onClose}>
+            {ui.customStatusCancel}
+          </button>
+          <button type="button" className="nav-button" onClick={() => selectedOption && onSelect(selectedOption)} disabled={!selectedOption}>
+            {ui.priorityApply}
           </button>
         </div>
       </section>
