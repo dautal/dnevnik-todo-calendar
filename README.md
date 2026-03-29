@@ -16,7 +16,13 @@ The goal is simple: combine planning and task management in a compact weekly vie
 - Rich task notes in a popup editor
 - Bold, italic, bullet list, and text-size controls for notes
 - Resizable notes window
+- Current day highlight
+- Add and delete extra task rows
+- Global search across tasks and notes
+- Zoomed-out year calendar with activity shading
+- Separate auth screen for cloud sync
 - Local browser persistence with `localStorage`
+- Supabase cloud sync with local fallback
 - Minimal black-and-white UI
 
 ## Design Direction
@@ -40,9 +46,11 @@ The main feature is the layout itself. The app is intentionally focused on the w
 
 - The current view always starts on Monday
 - The planner shows Monday through Saturday
-- Each day has fixed task rows
+- Each day starts with 6 task rows
+- Extra rows can be added and removed
 - Each row stores a task title, detailed notes, and completion state
-- Data is currently saved in the browser using `localStorage`
+- Data is saved in `localStorage` by default
+- When Supabase is configured, data syncs per signed-in user
 
 ## Local Development
 
@@ -62,7 +70,7 @@ The app now supports two storage modes:
 - Supabase cloud storage when env vars are configured
 
 1. Create a Supabase project
-2. Copy `.env.example` to `.env.local`
+2. Create `.env.local`
 3. Fill in:
 
 ```env
@@ -72,9 +80,13 @@ VITE_SUPABASE_PUBLISHABLE_KEY=your_publishable_key
 
 4. In the Supabase SQL editor, run the schema from `supabase-schema.sql`
 5. Restart the dev server
-6. Sign in with the magic-link form shown at the top of the app
+6. Open the auth screen and sign in with email/password
+
+Google and GitHub OAuth buttons are also present in the UI, but they will only work after those providers are configured in your Supabase project.
 
 With Supabase configured, tasks are stored per user in the `tasks` table. Without it, the app falls back to `localStorage`.
+
+If your Supabase free-tier project has been inactive for a while, it may be paused and need to wake up before auth or sync starts working again.
 
 ## Build
 
@@ -90,14 +102,14 @@ npm run preview
 
 ## Project Structure
 
-- `src/App.tsx` - app state, week logic, task grid, and notes popup
+- `src/App.tsx` - app state, auth flow, week logic, search, calendar, and notes popup
 - `src/styles.css` - layout system and visual styling
+- `src/lib/supabase.ts` - Supabase client setup
+- `supabase-schema.sql` - database schema and RLS policies
 - `PRODUCT_SPEC.md` - early product planning and layout notes
 
 ## Future Ideas
 
-- Supabase auth and cloud sync
-- user accounts
 - mobile-specific refinements
 - drag and reorder tasks
 - recurring tasks

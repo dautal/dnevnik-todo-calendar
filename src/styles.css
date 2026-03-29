@@ -202,6 +202,71 @@ h1 {
   gap: 6px;
 }
 
+.search-shell {
+  position: relative;
+  min-width: 260px;
+}
+
+.search-input {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  background: #ffffff;
+  color: var(--ink);
+  padding: 8px 10px;
+}
+
+.search-input:focus {
+  outline: none;
+  background: #f7f7f7;
+}
+
+.search-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  border: 1px solid var(--line-strong);
+  background: #ffffff;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.search-result,
+.search-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  background: #ffffff;
+  padding: 8px 10px;
+}
+
+.search-result:last-child,
+.search-empty:last-child {
+  border-bottom: none;
+}
+
+.search-result:hover,
+.search-result:focus {
+  background: #f7f7f7;
+  outline: none;
+}
+
+.search-result-title {
+  font-weight: 600;
+}
+
+.search-result-meta,
+.search-result-preview,
+.search-empty {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .nav-button {
   border: 1px solid var(--line-strong);
   background: #ffffff;
@@ -322,7 +387,7 @@ h1 {
 
 .day-grid .task-grid-row {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1.35fr) minmax(0, 0.9fr) 56px;
+  grid-template-columns: 40px minmax(0, 1.35fr) minmax(0, 0.9fr) 56px 44px;
   align-items: center;
   min-height: 32px;
   border-bottom: 1px solid var(--line);
@@ -330,6 +395,10 @@ h1 {
 
 .day-grid .task-grid-row:last-child {
   border-bottom: none;
+}
+
+.day-grid .task-grid-row.is-search-hit {
+  background: #eef6ff;
 }
 
 .add-row-button {
@@ -362,7 +431,8 @@ h1 {
 
 .task-grid-row > span,
 .task-grid-row > label,
-.cell-input {
+.cell-input,
+.delete-row-button {
   min-width: 0;
 }
 
@@ -407,6 +477,26 @@ h1 {
 
 .notes-trigger.has-notes {
   color: var(--ink);
+}
+
+.delete-row-button {
+  height: 100%;
+  border: none;
+  background: #ffffff;
+  color: var(--muted);
+  border-left: 1px solid var(--line);
+}
+
+.delete-row-button:hover:not(:disabled),
+.delete-row-button:focus:not(:disabled) {
+  background: #f7f7f7;
+  color: var(--ink);
+  outline: none;
+}
+
+.delete-row-button:disabled {
+  color: #c0c0c0;
+  cursor: not-allowed;
 }
 
 .notes-preview {
@@ -558,6 +648,10 @@ h1 {
   padding: 2px;
 }
 
+.calendar-week.has-activity {
+  border-color: #d8ead8;
+}
+
 .calendar-week:hover,
 .calendar-week:focus {
   border-color: var(--line-strong);
@@ -574,6 +668,27 @@ h1 {
 
 .calendar-week .is-outside-month {
   color: #b4b4b4;
+}
+
+.calendar-week .activity-1 {
+  background: #eef7ee;
+  color: #244224;
+}
+
+.calendar-week .activity-2 {
+  background: #dff0df;
+  color: #204620;
+}
+
+.calendar-week .activity-3 {
+  background: #c4e6c4;
+  color: #184718;
+}
+
+.calendar-week .activity-4 {
+  background: #97d497;
+  color: #113b11;
+  font-weight: 600;
 }
 
 .notes-dialog-header {
@@ -667,6 +782,10 @@ h1 {
     justify-content: center;
   }
 
+  .search-shell {
+    min-width: min(100%, 360px);
+  }
+
   .spread {
     grid-template-columns: 1fr;
   }
@@ -690,7 +809,7 @@ h1 {
   }
 
   .day-grid .task-grid-row {
-    grid-template-columns: 34px minmax(0, 1.1fr) minmax(0, 0.85fr) 48px;
+    grid-template-columns: 34px minmax(0, 1.1fr) minmax(0, 0.85fr) 48px 40px;
   }
 
   .calendar-grid {
@@ -717,11 +836,11 @@ h1 {
   }
 
   .day-grid .task-grid-row {
-    grid-template-columns: 30px minmax(0, 1fr) 52px;
+    grid-template-columns: 30px minmax(0, 1fr) 52px 40px;
   }
 
   .task-grid-head > span:nth-child(3),
-  .task-grid-row > input:nth-child(3) {
+  .task-grid-row > button:nth-child(3) {
     display: none;
   }
 }

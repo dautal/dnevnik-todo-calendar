@@ -22,6 +22,16 @@ type CalendarMonth = {
   weeks: Date[][];
 };
 
+type SearchResult = {
+  weekKey: string;
+  dayKey: string;
+  rowId: string;
+  title: string;
+  notesPreview: string;
+  dayLabel: string;
+  dateLabel: string;
+};
+
 type DayData = {
   key: string;
   label: string;
@@ -88,12 +98,20 @@ function formatWeekKey(monday: Date) {
   return monday.toISOString().slice(0, 10);
 }
 
+function parseWeekKey(weekKey: string) {
+  return new Date(`${weekKey}T00:00:00`);
+}
+
 function formatSheetRange(days: DayData[]) {
   const first = days[0];
   const last = days[days.length - 1];
-  const month = new Date(`${first.date}, 2026`).toLocaleString('en-US', { month: 'long' });
-  const firstDay = first.date.split(' ')[1];
-  const lastDay = last.date.split(' ')[1];
+  const [, ...firstDateParts] = first.key.split('-');
+  const firstDate = new Date(`${firstDateParts.join('-')}T00:00:00`);
+  const month = firstDate.toLocaleString('en-US', { month: 'long' });
+  const firstDay = String(firstDate.getDate());
+  const [, ...lastDateParts] = last.key.split('-');
+  const lastDate = new Date(`${lastDateParts.join('-')}T00:00:00`);
+  const lastDay = String(lastDate.getDate());
   return `${month.toUpperCase()} ${firstDay}-${lastDay}`;
 }
 
@@ -197,6 +215,25 @@ function hasAnyTaskContent(week: Record<string, TaskRow[]> | undefined) {
   );
 }
 
+function buildActivityMap(savedWeeks: Record<string, Record<string, TaskRow[]>>) {
+  const activity = new Map<string, number>();
+
+  for (const week of Object.values(savedWeeks)) {
+    for (const [dayKey, rows] of Object.entries(week)) {
+      const dateKey = dayKey.split('-').slice(1).join('-');
+      const count = rows.reduce((total, row) => {
+        return row.title.trim() !== '' || row.notes.trim() !== '' || row.completed ? total + 1 : total;
+      }, 0);
+
+      if (count > 0) {
+        activity.set(dateKey, count);
+      }
+    }
+  }
+
+  return activity;
+}
+
 function getNotePreview(notes: string) {
   if (!notes.trim()) {
     return '';
@@ -210,6 +247,51 @@ function getNotePreview(notes: string) {
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function buildSearchResults(savedWeeks: Record<string, Record<string, TaskRow[]>>, query: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+
+  if (!normalizedQuery) {
+    return [];
+  }
+
+  const results: SearchResult[] = [];
+
+  for (const [weekKey, week] of Object.entries(savedWeeks)) {
+    for (const [dayKey, rows] of Object.entries(week)) {
+      const weekday = dayKey.split('-')[0];
+      const date = dayKey.split('-').slice(1).join('-');
+      const labelDate = new Date(`${date}T00:00:00`);
+      const dayLabel = `${weekday[0].toUpperCase()}${weekday.slice(1)}`;
+      const dateLabel = labelDate.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+
+      for (const row of rows) {
+        const notesPreview = getNotePreview(row.notes);
+        const haystack = `${row.title} ${notesPreview}`.toLowerCase();
+
+        if (!haystack.includes(normalizedQuery)) {
+          continue;
+        }
+
+        results.push({
+          weekKey,
+          dayKey,
+          rowId: row.id,
+          title: row.title || 'Untitled task',
+          notesPreview,
+          dayLabel,
+          dateLabel,
+        });
+      }
+    }
+  }
+
+  return results.slice(0, 24);
 }
 
 function App() {
@@ -226,11 +308,15 @@ function App() {
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [visibleYear, setVisibleYear] = useState(() => new Date().getFullYear());
   const [hasHydratedLocalCache, setHasHydratedLocalCache] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeSearchRowId, setActiveSearchRowId] = useState<string | null>(null);
   const weekKey = formatWeekKey(weekStart);
   const yearMonths = useMemo(
     () => MONTH_NAMES.map((_, monthIndex) => getMonthCalendar(visibleYear, monthIndex)),
     [visibleYear],
   );
+  const activityMap = useMemo(() => buildActivityMap(savedWeeks), [savedWeeks]);
+  const searchResults = useMemo(() => buildSearchResults(savedWeeks, searchQuery), [savedWeeks, searchQuery]);
 
   useEffect(() => {
     const raw = window.localStorage.getItem(STORAGE_PREFIX);
@@ -388,6 +474,54 @@ function App() {
     }
   }
 
+  async function syncDayRows(dayKey: string, rows: TaskRow[]) {
+    if (!supabase || !user) {
+      return;
+    }
+
+    const dayIndex = getDayIndex(dayKey);
+    if (dayIndex < 0) {
+      return;
+    }
+
+    const client = supabase;
+    const activeUser = user;
+
+    const { error: deleteError } = await client
+      .from('tasks')
+      .delete()
+      .eq('user_id', activeUser.id)
+      .eq('week_start', weekKey)
+      .eq('day_index', dayIndex);
+
+    if (deleteError) {
+      setStorageError(deleteError.message);
+      return;
+    }
+
+    const populatedRows = rows
+      .map((row, rowIndex) => ({
+        user_id: activeUser.id,
+        week_start: weekKey,
+        day_index: dayIndex,
+        row_index: rowIndex,
+        title: row.title,
+        notes: row.notes,
+        completed: row.completed,
+      }))
+      .filter((row) => row.title.trim() !== '' || row.notes.trim() !== '' || row.completed);
+
+    if (populatedRows.length === 0) {
+      return;
+    }
+
+    const { error: insertError } = await client.from('tasks').insert(populatedRows);
+
+    if (insertError) {
+      setStorageError(insertError.message);
+    }
+  }
+
   function addRow(dayKey: string) {
     setSavedWeeks((current) => {
       const currentWeek = current[weekKey] ?? {};
@@ -404,6 +538,41 @@ function App() {
       window.localStorage.setItem(STORAGE_PREFIX, JSON.stringify(nextState));
       return nextState;
     });
+  }
+
+  function deleteRow(dayKey: string, rowId: string) {
+    const currentWeek = savedWeeks[weekKey] ?? {};
+    const currentRows = currentWeek[dayKey] ?? createEmptyRows(dayKey);
+
+    if (currentRows.length <= ROW_COUNT) {
+      return;
+    }
+
+    const filteredRows = currentRows.filter((row) => row.id !== rowId);
+    const remainingRows = filteredRows.map((row, index) => ({
+      ...createEmptyRow(dayKey, index),
+      title: row.title,
+      notes: row.notes,
+      completed: row.completed,
+    }));
+
+    setSavedWeeks((current) => {
+      const week = current[weekKey] ?? {};
+      const nextState = {
+        ...current,
+        [weekKey]: {
+          ...week,
+          [dayKey]: remainingRows,
+        },
+      };
+
+      window.localStorage.setItem(STORAGE_PREFIX, JSON.stringify(nextState));
+      return nextState;
+    });
+
+    if (supabase && user) {
+      void syncDayRows(dayKey, remainingRows);
+    }
   }
 
   function updateRow(dayKey: string, rowId: string, field: keyof TaskRow, value: string | boolean) {
@@ -480,6 +649,21 @@ function App() {
     setWeekStart(getMonday(target));
     setIsCalendarOpen(false);
   }
+
+  function jumpToSearchResult(result: SearchResult) {
+    setWeekStart(parseWeekKey(result.weekKey));
+    setActiveSearchRowId(result.rowId);
+    setSearchQuery('');
+  }
+
+  useEffect(() => {
+    if (!activeSearchRowId) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => setActiveSearchRowId(null), 2200);
+    return () => window.clearTimeout(timeout);
+  }, [activeSearchRowId]);
 
   async function signInWithPassword() {
     if (!supabase || !authEmail.trim() || !authPassword) {
@@ -601,8 +785,40 @@ function App() {
           <button type="button" className="nav-button nav-button-inline nav-arrow" onClick={() => moveWeek(-1)} aria-label="Previous week">
             ←
           </button>
+          <div className="search-shell">
+            <input
+              className="search-input"
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search tasks and notes"
+              aria-label="Search tasks and notes"
+            />
+            {searchQuery.trim() ? (
+              <div className="search-results">
+                {searchResults.length > 0 ? (
+                  searchResults.map((result) => (
+                    <button
+                      key={`${result.rowId}-${result.weekKey}`}
+                      type="button"
+                      className="search-result"
+                      onClick={() => jumpToSearchResult(result)}
+                    >
+                      <span className="search-result-title">{result.title}</span>
+                      <span className="search-result-meta">
+                        {result.dayLabel} · {result.dateLabel}
+                      </span>
+                      {result.notesPreview ? <span className="search-result-preview">{result.notesPreview}</span> : null}
+                    </button>
+                  ))
+                ) : (
+                  <div className="search-empty">No matching tasks</div>
+                )}
+              </div>
+            ) : null}
+          </div>
           <button type="button" className="nav-button" onClick={() => setIsCalendarOpen(true)}>
-            Zoom Out
+            Calendar
           </button>
           <button type="button" className="nav-button nav-button-primary" onClick={resetToCurrentWeek}>
             Today
@@ -619,16 +835,20 @@ function App() {
           days={leftPage}
           onUpdateRow={updateRow}
           onAddRow={addRow}
+          onDeleteRow={deleteRow}
           onOpenNotes={openNotesEditor}
           activeDayIndex={weekKey === todayWeekKey ? todayDayIndex : null}
+          activeSearchRowId={activeSearchRowId}
         />
         <PageSheet
           headerLabel={formatSheetRange(rightPage)}
           days={rightPage}
           onUpdateRow={updateRow}
           onAddRow={addRow}
+          onDeleteRow={deleteRow}
           onOpenNotes={openNotesEditor}
           activeDayIndex={weekKey === todayWeekKey ? todayDayIndex : null}
+          activeSearchRowId={activeSearchRowId}
         />
       </main>
 
@@ -645,6 +865,7 @@ function App() {
           visibleYear={visibleYear}
           months={yearMonths}
           selectedWeekKey={weekKey}
+          activityMap={activityMap}
           onClose={() => setIsCalendarOpen(false)}
           onPickWeek={jumpToWeek}
           onPreviousYear={() => setVisibleYear((current) => current - 1)}
@@ -734,11 +955,22 @@ type PageSheetProps = {
   days: DayData[];
   onUpdateRow: (dayKey: string, rowId: string, field: keyof TaskRow, value: string | boolean) => void;
   onAddRow: (dayKey: string) => void;
+  onDeleteRow: (dayKey: string, rowId: string) => void;
   onOpenNotes: (dayKey: string, row: TaskRow) => void;
   activeDayIndex: number | null;
+  activeSearchRowId: string | null;
 };
 
-function PageSheet({ headerLabel, days, onUpdateRow, onAddRow, onOpenNotes, activeDayIndex }: PageSheetProps) {
+function PageSheet({
+  headerLabel,
+  days,
+  onUpdateRow,
+  onAddRow,
+  onDeleteRow,
+  onOpenNotes,
+  activeDayIndex,
+  activeSearchRowId,
+}: PageSheetProps) {
   return (
     <section className="page-sheet">
       <div className="page-header">
@@ -754,8 +986,10 @@ function PageSheet({ headerLabel, days, onUpdateRow, onAddRow, onOpenNotes, acti
             day={day}
             onUpdateRow={onUpdateRow}
             onAddRow={onAddRow}
+            onDeleteRow={onDeleteRow}
             onOpenNotes={onOpenNotes}
             isActive={DAY_NAMES.indexOf(day.label) === activeDayIndex}
+            activeSearchRowId={activeSearchRowId}
           />
         ))}
       </div>
@@ -767,11 +1001,13 @@ type DaySectionProps = {
   day: DayData;
   onUpdateRow: (dayKey: string, rowId: string, field: keyof TaskRow, value: string | boolean) => void;
   onAddRow: (dayKey: string) => void;
+  onDeleteRow: (dayKey: string, rowId: string) => void;
   onOpenNotes: (dayKey: string, row: TaskRow) => void;
   isActive: boolean;
+  activeSearchRowId: string | null;
 };
 
-function DaySection({ day, onUpdateRow, onAddRow, onOpenNotes, isActive }: DaySectionProps) {
+function DaySection({ day, onUpdateRow, onAddRow, onDeleteRow, onOpenNotes, isActive, activeSearchRowId }: DaySectionProps) {
   const dayNumber = day.date.split(' ')[1];
 
   return (
@@ -789,10 +1025,11 @@ function DaySection({ day, onUpdateRow, onAddRow, onOpenNotes, isActive }: DaySe
           <span>Task</span>
           <span>Notes</span>
           <span>Done</span>
+          <span>Del</span>
         </div>
 
         {day.rows.map((row, index) => (
-          <div key={row.id} className="task-grid-row">
+          <div key={row.id} className={`task-grid-row ${activeSearchRowId === row.id ? 'is-search-hit' : ''}`}>
             <span className="row-number">{index + 1}</span>
             <input
               className={`cell-input ${row.completed ? 'is-complete' : ''}`}
@@ -817,6 +1054,15 @@ function DaySection({ day, onUpdateRow, onAddRow, onOpenNotes, isActive }: DaySe
               />
               <span />
             </label>
+            <button
+              type="button"
+              className="delete-row-button"
+              onClick={() => onDeleteRow(day.key, row.id)}
+              disabled={day.rows.length <= ROW_COUNT}
+              aria-label={`Delete row ${index + 1}`}
+            >
+              ×
+            </button>
           </div>
         ))}
 
@@ -838,6 +1084,7 @@ type CalendarNavigatorProps = {
   visibleYear: number;
   months: CalendarMonth[];
   selectedWeekKey: string;
+  activityMap: Map<string, number>;
   onClose: () => void;
   onPickWeek: (date: Date) => void;
   onPreviousYear: () => void;
@@ -1007,6 +1254,7 @@ function CalendarNavigator({
   visibleYear,
   months,
   selectedWeekKey,
+  activityMap,
   onClose,
   onPickWeek,
   onPreviousYear,
@@ -1058,22 +1306,35 @@ function CalendarNavigator({
                   const weekKey = formatWeekKey(getMonday(week[0]));
                   const isSelected = weekKey === selectedWeekKey;
                   const isCurrent = weekKey === todayKey;
+                  const weekActivity = week.reduce(
+                    (total, day) => total + (activityMap.get(day.toISOString().slice(0, 10)) ?? 0),
+                    0,
+                  );
 
                   return (
                     <button
                       key={weekKey}
                       type="button"
-                      className={`calendar-week ${isSelected ? 'is-selected' : ''} ${isCurrent ? 'is-current' : ''}`}
+                      className={`calendar-week ${isSelected ? 'is-selected' : ''} ${isCurrent ? 'is-current' : ''} ${
+                        weekActivity > 0 ? 'has-activity' : ''
+                      }`}
                       onClick={() => onPickWeek(week[0])}
                     >
-                      {week.map((day) => (
-                        <span
-                          key={day.toISOString()}
-                          className={day.getMonth() === month.monthIndex ? '' : 'is-outside-month'}
-                        >
-                          {day.getDate()}
-                        </span>
-                      ))}
+                      {week.map((day) => {
+                        const dateKey = day.toISOString().slice(0, 10);
+                        const activity = activityMap.get(dateKey) ?? 0;
+                        const intensity =
+                          activity >= 6 ? 'activity-4' : activity >= 4 ? 'activity-3' : activity >= 2 ? 'activity-2' : activity >= 1 ? 'activity-1' : '';
+
+                        return (
+                          <span
+                            key={day.toISOString()}
+                            className={`${day.getMonth() === month.monthIndex ? '' : 'is-outside-month'} ${intensity}`.trim()}
+                          >
+                            {day.getDate()}
+                          </span>
+                        );
+                      })}
                     </button>
                   );
                 })}
