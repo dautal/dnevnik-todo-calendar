@@ -895,6 +895,11 @@ function isAllowedBetaUser(user: User | null, allowedEmails: Set<string>) {
   return Boolean(email && allowedEmails.has(email));
 }
 
+function getAuthRedirectUrl() {
+  const { origin } = window.location;
+  return origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1') ? origin : window.location.origin;
+}
+
 const DETAIL_COLORS: DetailColor[] = ['default', 'blue', 'green', 'amber', 'pink', 'violet'];
 
 const PRESET_PRIORITY_OPTIONS = ['none', 'low', 'urgent', 'critical', 'done'] as const;
@@ -1832,7 +1837,7 @@ function App() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: getAuthRedirectUrl(),
       },
     });
 
@@ -2539,25 +2544,30 @@ function DaySection({
                 </span>
               ) : null}
             </div>
-            <input
-              className={`cell-input ${row.status === 'done' ? 'is-complete' : ''}`}
-              value={row.title}
-              onChange={(event) => {
-                const nextTitle = event.target.value;
-                const wasEmpty = row.title.trim() === '';
-                const isNowFilled = nextTitle.trim() !== '';
+            <div className="task-cell">
+              <input
+                className={`cell-input ${row.status === 'done' ? 'is-complete' : ''}`}
+                value={row.title}
+                onChange={(event) => {
+                  const nextTitle = event.target.value;
+                  const wasEmpty = row.title.trim() === '';
+                  const isNowFilled = nextTitle.trim() !== '';
 
-                if (wasEmpty && isNowFilled) {
-                  onUpdateRowFields(day.key, row.id, {
-                    title: nextTitle,
-                    priorityDismissed: false,
-                  });
-                  return;
-                }
+                  if (wasEmpty && isNowFilled) {
+                    onUpdateRowFields(day.key, row.id, {
+                      title: nextTitle,
+                      priorityDismissed: false,
+                    });
+                    return;
+                  }
 
-                onUpdateRow(day.key, row.id, 'title', nextTitle);
-              }}
-            />
+                  onUpdateRow(day.key, row.id, 'title', nextTitle);
+                }}
+              />
+              <button type="button" className="mobile-notes-trigger" onClick={() => onOpenNotes(day.key, row)}>
+                {row.notes.trim() ? ui.notes : `+ ${ui.notes}`}
+              </button>
+            </div>
             <button
               type="button"
               className={`notes-trigger ${row.notes ? 'has-notes' : ''}`}
