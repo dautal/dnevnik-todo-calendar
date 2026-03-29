@@ -7,6 +7,19 @@ type TaskRow = {
   title: string;
   notes: string;
   status: RowStatus;
+  time: string;
+  detailColor: DetailColor;
+  priorityDismissed: boolean;
+};
+
+type MiscTask = {
+  id: string;
+  text: string;
+};
+
+type DraggedTaskRow = {
+  dayKey: string;
+  rowId: string;
 };
 
 type ActiveNotesEditor = {
@@ -14,6 +27,20 @@ type ActiveNotesEditor = {
   rowId: string;
   taskTitle: string;
   notes: string;
+};
+
+type ActiveStatusEditor = {
+  dayKey: string;
+  rowId: string;
+  status: string;
+  color: DetailColor;
+};
+
+type ActivePriorityPicker = {
+  dayKey: string;
+  rowId: string;
+  value: string;
+  color: DetailColor;
 };
 
 type CalendarMonth = {
@@ -47,6 +74,8 @@ type TaskRecord = {
   title: string;
   notes: string;
   status: RowStatus;
+  task_time: string;
+  detail_color: DetailColor;
 };
 
 type LegacyTaskRecord = {
@@ -57,16 +86,21 @@ type LegacyTaskRecord = {
   title: string;
   notes: string;
   completed: boolean;
+  task_time?: string;
+  detail_color?: DetailColor;
 };
 
 type ThemeName = 'white' | 'paper' | 'night' | 'sepia' | 'blueprint';
 type LanguageCode = 'en' | 'ru';
-type RowStatus = 'none' | 'low' | 'urgent' | 'critical' | 'done';
+type RowStatus = string;
+type DetailColor = 'default' | 'blue' | 'green' | 'amber' | 'pink' | 'violet';
 
 const ROW_COUNT = 6;
 const MAX_ROW_COUNT = 16;
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const STORAGE_PREFIX = 'dnevnik-week';
+const MISC_STORAGE_PREFIX = 'dnevnik-misc';
+const PLANNER_TITLE_STORAGE_KEY = 'dnevnik-planner-title';
 const THEME_STORAGE_KEY = 'dnevnik-theme';
 const LANGUAGE_STORAGE_KEY = 'dnevnik-language';
 const MONTH_NAMES = [
@@ -92,7 +126,7 @@ const UI_TEXT = {
     loadingWeek: 'Loading this week from Supabase...',
     previousWeek: 'Previous week',
     nextWeek: 'Next week',
-    today: 'Today',
+    today: 'Home',
     calendar: 'Calendar',
     searchPlaceholder: 'Search tasks and notes',
     noMatchingTasks: 'No matching tasks',
@@ -130,8 +164,10 @@ const UI_TEXT = {
     status: 'Status',
     done: 'Done',
     del: 'Del',
-    statusSet: 'Set',
-    statusSortLabel: 'Status',
+    statusSet: 'Set Priority',
+    statusNone: 'None',
+    statusCustom: 'Custom...',
+    statusSortLabel: 'Priority',
     statusSortManual: 'Manual',
     statusSortUrgency: 'Urgency',
     statusSortAria: 'Toggle status sorting',
@@ -139,6 +175,21 @@ const UI_TEXT = {
     statusUrgent: 'Urgent',
     statusCritical: 'Critical',
     statusDone: 'Done',
+    time: 'Time',
+    customStatusTitle: 'Custom detail',
+    customStatusPlaceholder: 'Enter a custom detail',
+    customStatusSave: 'Save',
+    customStatusCancel: 'Cancel',
+    detailColor: 'Color',
+    colorDefault: 'Default',
+    colorBlue: 'Blue',
+    colorGreen: 'Green',
+    colorAmber: 'Amber',
+    colorPink: 'Pink',
+    colorViolet: 'Violet',
+    timeTitle: 'Task time',
+    timeSave: 'Save time',
+    timeClear: 'Clear time',
     deleteRow: (index: number) => `Delete row ${index}`,
     addRow: '+ Add row',
     rowLimitReached: (limit: number) => `Row limit reached (${limit})`,
@@ -149,6 +200,11 @@ const UI_TEXT = {
     previousYear: 'Previous year',
     nextYear: 'Next year',
     close: 'Close',
+    miscTasksTitle: 'Miscellaneous tasks',
+    miscTasksPlaceholder: 'Miscellaneous tasks. Drag them into a day later.',
+    miscTasksSend: 'Add task',
+    miscTasksEmpty: 'Misc tasks you add here will wait below until you assign them.',
+    deleteMiscTask: 'Delete misc task',
   },
   ru: {
     plannerSettings: 'Настройки планера',
@@ -157,7 +213,7 @@ const UI_TEXT = {
     loadingWeek: 'Загрузка недели из Supabase...',
     previousWeek: 'Предыдущая неделя',
     nextWeek: 'Следующая неделя',
-    today: 'Сегодня',
+    today: 'Домой',
     calendar: 'Календарь',
     searchPlaceholder: 'Поиск по задачам и заметкам',
     noMatchingTasks: 'Ничего не найдено',
@@ -195,8 +251,10 @@ const UI_TEXT = {
     status: 'Статус',
     done: 'Сделано',
     del: 'Удал.',
-    statusSet: 'Выбрать',
-    statusSortLabel: 'Статус',
+    statusSet: 'Задать приоритет',
+    statusNone: 'Без приоритета',
+    statusCustom: 'Свое...',
+    statusSortLabel: 'Приоритет',
     statusSortManual: 'Вручную',
     statusSortUrgency: 'По срочности',
     statusSortAria: 'Переключить сортировку по статусу',
@@ -204,6 +262,21 @@ const UI_TEXT = {
     statusUrgent: 'Срочно',
     statusCritical: 'Критично',
     statusDone: 'Сделано',
+    time: 'Время',
+    customStatusTitle: 'Своя деталь',
+    customStatusPlaceholder: 'Введите свою деталь',
+    customStatusSave: 'Сохранить',
+    customStatusCancel: 'Отмена',
+    detailColor: 'Цвет',
+    colorDefault: 'Базовый',
+    colorBlue: 'Синий',
+    colorGreen: 'Зеленый',
+    colorAmber: 'Янтарный',
+    colorPink: 'Розовый',
+    colorViolet: 'Фиолетовый',
+    timeTitle: 'Время задачи',
+    timeSave: 'Сохранить время',
+    timeClear: 'Очистить время',
     deleteRow: (index: number) => `Удалить строку ${index}`,
     addRow: '+ Добавить строку',
     rowLimitReached: (limit: number) => `Достигнут лимит строк (${limit})`,
@@ -214,6 +287,11 @@ const UI_TEXT = {
     previousYear: 'Предыдущий год',
     nextYear: 'Следующий год',
     close: 'Закрыть',
+    miscTasksTitle: 'Разные задачи',
+    miscTasksPlaceholder: 'Разные задачи. Потом перетащите их в нужный день.',
+    miscTasksSend: 'Добавить задачу',
+    miscTasksEmpty: 'Задачи, которые вы добавите сюда, будут ждать внизу, пока вы их не распределите.',
+    deleteMiscTask: 'Удалить задачу',
   },
 } as const;
 
@@ -243,35 +321,57 @@ function getStatusLabel(status: RowStatus, ui: UiText) {
       return ui.statusCritical;
     case 'done':
       return ui.statusDone;
-    default:
+    case 'none':
       return ui.statusSet;
+    default:
+      return status;
   }
 }
 
-function getStatusSortWeight(status: RowStatus) {
-  switch (status) {
-    case 'critical':
-      return 0;
-    case 'urgent':
-      return 1;
-    case 'low':
-      return 2;
-    case 'none':
-      return 3;
-    case 'done':
-      return 4;
+function getCustomDetailValue(row: TaskRow) {
+  if (row.time.trim()) {
+    return row.time.trim();
+  }
+
+  if (!isPresetStatus(row.status)) {
+    return row.status.trim();
+  }
+
+  return '';
+}
+
+function normalizeDetailColor(value: unknown): DetailColor {
+  switch (value) {
+    case 'blue':
+    case 'green':
+    case 'amber':
+    case 'pink':
+    case 'violet':
+      return value;
     default:
-      return 5;
+      return 'default';
+  }
+}
+
+function getDetailColorLabel(color: DetailColor, ui: UiText) {
+  switch (color) {
+    case 'blue':
+      return ui.colorBlue;
+    case 'green':
+      return ui.colorGreen;
+    case 'amber':
+      return ui.colorAmber;
+    case 'pink':
+      return ui.colorPink;
+    case 'violet':
+      return ui.colorViolet;
+    default:
+      return ui.colorDefault;
   }
 }
 
 function createEmptyRows(dayKey: string): TaskRow[] {
-  return Array.from({ length: ROW_COUNT }, (_, index) => ({
-    id: `${dayKey}-${index}`,
-    title: '',
-    notes: '',
-    status: 'none',
-  }));
+  return Array.from({ length: ROW_COUNT }, (_, index) => createEmptyRow(dayKey, index));
 }
 
 function createEmptyRow(dayKey: string, index: number): TaskRow {
@@ -280,12 +380,19 @@ function createEmptyRow(dayKey: string, index: number): TaskRow {
     title: '',
     notes: '',
     status: 'none',
+    time: '',
+    detailColor: 'default',
+    priorityDismissed: false,
   };
 }
 
 function normalizeStatus(value: unknown, completed?: unknown): RowStatus {
   if (value === 'none' || value === 'low' || value === 'urgent' || value === 'critical' || value === 'done') {
     return value;
+  }
+
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim();
   }
 
   if (completed === true) {
@@ -301,6 +408,17 @@ function normalizeTaskRow(row: Partial<TaskRow> & { completed?: boolean }, dayKe
     title: typeof row.title === 'string' ? row.title : '',
     notes: typeof row.notes === 'string' ? row.notes : '',
     status: normalizeStatus(row.status, row.completed),
+    time:
+      typeof row.time === 'string'
+        ? row.time
+        : typeof (row as Partial<TaskRecord>).task_time === 'string'
+          ? (row as Partial<TaskRecord>).task_time ?? ''
+          : '',
+    detailColor:
+      typeof (row as Partial<TaskRow>).detailColor === 'string'
+        ? normalizeDetailColor((row as Partial<TaskRow>).detailColor)
+        : normalizeDetailColor((row as Partial<TaskRecord>).detail_color),
+    priorityDismissed: Boolean((row as Partial<TaskRow>).priorityDismissed),
   };
 }
 
@@ -316,6 +434,18 @@ function normalizeSavedWeeks(raw: Record<string, Record<string, Array<Partial<Ta
   }
 
   return normalized;
+}
+
+function reindexRows(dayKey: string, rows: TaskRow[]) {
+  return rows.map((row, index) => ({
+    ...createEmptyRow(dayKey, index),
+    title: row.title,
+    notes: row.notes,
+    status: row.status,
+    time: row.time,
+    detailColor: row.detailColor,
+    priorityDismissed: row.priorityDismissed,
+  }));
 }
 
 function getMonday(date: Date) {
@@ -491,7 +621,7 @@ function getRowIndex(rowId: string) {
 }
 
 function isRowEmpty(row: TaskRow) {
-  return row.title.trim() === '' && row.notes.trim() === '' && row.status === 'none';
+  return row.title.trim() === '' && row.notes.trim() === '' && row.status === 'none' && row.time.trim() === '';
 }
 
 function mapRecordsToWeek(weekStart: Date, records: TaskRecord[]) {
@@ -519,6 +649,9 @@ function mapRecordsToWeek(weekStart: Date, records: TaskRecord[]) {
       title: record.title,
       notes: record.notes,
       status: normalizeStatus(record.status),
+      time: record.task_time ?? '',
+      detailColor: normalizeDetailColor(record.detail_color),
+      priorityDismissed: false,
     };
   }
 
@@ -531,7 +664,7 @@ function hasAnyTaskContent(week: Record<string, TaskRow[]> | undefined) {
   }
 
   return Object.values(week).some((rows) =>
-    rows.some((row) => row.title.trim() !== '' || row.notes.trim() !== '' || row.status !== 'none'),
+    rows.some((row) => row.title.trim() !== '' || row.notes.trim() !== '' || row.status !== 'none' || row.time.trim() !== ''),
   );
 }
 
@@ -620,10 +753,52 @@ function getActiveDayIndexForWeek(weekKey: string, todayWeekKey: string, todayDa
   return weekKey === todayWeekKey ? todayDayIndex : null;
 }
 
+function createMiscTask(text: string): MiscTask {
+  return {
+    id: `misc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    text,
+  };
+}
+
+function shiftWeekKeyByOffset(weekKey: string, offset: number) {
+  const date = parseWeekKey(weekKey);
+  date.setDate(date.getDate() + offset * 7);
+  return formatWeekKey(getMonday(date));
+}
+
+function normalizeMiscTasks(raw: Record<string, Array<Partial<MiscTask>>>) {
+  const normalized: Record<string, MiscTask[]> = {};
+
+  for (const [weekKey, tasks] of Object.entries(raw)) {
+    normalized[weekKey] = tasks
+      .map((task, index) => ({
+        id: typeof task.id === 'string' && task.id ? task.id : `misc-${weekKey}-${index}`,
+        text: typeof task.text === 'string' ? task.text.trim() : '',
+      }))
+      .filter((task) => task.text);
+  }
+
+  return normalized;
+}
+
+function isPresetStatus(status: RowStatus) {
+  return status === 'none' || status === 'low' || status === 'urgent' || status === 'critical' || status === 'done';
+}
+
+const DETAIL_COLORS: DetailColor[] = ['default', 'blue', 'green', 'amber', 'pink', 'violet'];
+
+const PRESET_PRIORITY_OPTIONS = ['none', 'low', 'urgent', 'critical', 'done'] as const;
+
 function App() {
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()));
   const [savedWeeks, setSavedWeeks] = useState<Record<string, Record<string, TaskRow[]>>>({});
   const [activeNotesEditor, setActiveNotesEditor] = useState<ActiveNotesEditor | null>(null);
+  const [activeStatusEditor, setActiveStatusEditor] = useState<ActiveStatusEditor | null>(null);
+  const [activePriorityPicker, setActivePriorityPicker] = useState<ActivePriorityPicker | null>(null);
+  const [miscTasksByWeek, setMiscTasksByWeek] = useState<Record<string, MiscTask[]>>({});
+  const [miscTaskInput, setMiscTaskInput] = useState('');
+  const [draggedMiscTaskId, setDraggedMiscTaskId] = useState<string | null>(null);
+  const [draggedTaskRow, setDraggedTaskRow] = useState<DraggedTaskRow | null>(null);
   const [language, setLanguage] = useState<LanguageCode>(() => {
     const savedLanguage = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
     return savedLanguage === 'ru' ? 'ru' : 'en';
@@ -652,6 +827,8 @@ function App() {
   const [showWeekLoadingBanner, setShowWeekLoadingBanner] = useState(false);
   const [storageError, setStorageError] = useState('');
   const [usesLegacyCompletedColumn, setUsesLegacyCompletedColumn] = useState(false);
+  const [usesLegacyTimeColumn, setUsesLegacyTimeColumn] = useState(false);
+  const [usesLegacyDetailColorColumn, setUsesLegacyDetailColorColumn] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [visibleYear, setVisibleYear] = useState(() => new Date().getFullYear());
@@ -659,6 +836,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSearchRowId, setActiveSearchRowId] = useState<string | null>(null);
   const [pageTurn, setPageTurn] = useState<{ weekStart: Date; direction: 'forward' | 'backward' } | null>(null);
+  const [plannerTitleOverride, setPlannerTitleOverride] = useState('');
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const previousWeekStartRef = useRef(weekStart);
   const ui = UI_TEXT[language];
@@ -673,7 +851,9 @@ function App() {
   const userDisplayName = useMemo(() => getUserDisplayName(user), [user]);
   const userAvatarUrl = useMemo(() => getUserAvatarUrl(user), [user]);
   const userInitials = useMemo(() => getUserInitials(user), [user]);
-  const plannerTitle = useMemo(() => getPlannerTitle(user, language), [user, language]);
+  const defaultPlannerTitle = useMemo(() => getPlannerTitle(user, language), [user, language]);
+  const plannerTitle = plannerTitleOverride || defaultPlannerTitle;
+  const miscTasks = miscTasksByWeek[weekKey] ?? [];
 
   useEffect(() => {
     const raw = window.localStorage.getItem(STORAGE_PREFIX);
@@ -684,6 +864,21 @@ function App() {
       } catch {
         window.localStorage.removeItem(STORAGE_PREFIX);
       }
+    }
+
+    const rawMisc = window.localStorage.getItem(MISC_STORAGE_PREFIX);
+    if (rawMisc) {
+      try {
+        const parsed = JSON.parse(rawMisc) as Record<string, Array<Partial<MiscTask>>>;
+        setMiscTasksByWeek(normalizeMiscTasks(parsed));
+      } catch {
+        window.localStorage.removeItem(MISC_STORAGE_PREFIX);
+      }
+    }
+
+    const rawPlannerTitle = window.localStorage.getItem(PLANNER_TITLE_STORAGE_KEY);
+    if (rawPlannerTitle) {
+      setPlannerTitleOverride(rawPlannerTitle);
     }
 
     setHasHydratedLocalCache(true);
@@ -729,45 +924,109 @@ function App() {
       let data: TaskRecord[] | null = null;
       let error: { message: string } | null = null;
 
-      if (usesLegacyCompletedColumn) {
-        const legacyResult = await client
+      async function selectTasks(columns: string) {
+        return client
           .from('tasks')
-          .select('user_id, week_start, day_index, row_index, title, notes, completed')
+          .select(columns)
           .eq('user_id', activeUser.id)
           .eq('week_start', weekKey)
           .order('day_index', { ascending: true })
           .order('row_index', { ascending: true });
+      }
+
+      async function selectWithLegacyFallback(primaryColumns: string, fallbackColumns: string) {
+        let result = await selectTasks(primaryColumns);
+
+        if (result.error?.message.includes('column tasks.detail_color does not exist')) {
+          result = await selectTasks(fallbackColumns);
+          setUsesLegacyDetailColorColumn(true);
+        }
+
+        if (result.error?.message.includes('column tasks.task_time does not exist')) {
+          result = await selectTasks(
+            fallbackColumns
+              .split(',')
+              .map((column) => column.trim())
+              .filter((column) => column !== 'task_time')
+              .join(', '),
+          );
+          setUsesLegacyTimeColumn(true);
+          if (!usesLegacyDetailColorColumn) {
+            setUsesLegacyDetailColorColumn(true);
+          }
+        }
+
+        return result;
+      }
+
+      if (usesLegacyCompletedColumn) {
+        const legacyPrimaryColumns =
+          usesLegacyTimeColumn
+            ? usesLegacyDetailColorColumn
+              ? 'user_id, week_start, day_index, row_index, title, notes, completed'
+              : 'user_id, week_start, day_index, row_index, title, notes, completed, detail_color'
+            : usesLegacyDetailColorColumn
+              ? 'user_id, week_start, day_index, row_index, title, notes, completed, task_time'
+              : 'user_id, week_start, day_index, row_index, title, notes, completed, task_time, detail_color';
+        const legacyFallbackColumns =
+          usesLegacyTimeColumn || usesLegacyDetailColorColumn
+            ? 'user_id, week_start, day_index, row_index, title, notes, completed'
+            : 'user_id, week_start, day_index, row_index, title, notes, completed, task_time';
+
+        const legacyResult = await selectWithLegacyFallback(legacyPrimaryColumns, legacyFallbackColumns);
 
         error = legacyResult.error;
-        data = (legacyResult.data ?? []).map((record) => ({
+        data = ((legacyResult.data ?? []) as unknown as LegacyTaskRecord[]).map((record) => ({
           ...record,
-          status: normalizeStatus(undefined, (record as LegacyTaskRecord).completed),
+          status: normalizeStatus(undefined, record.completed),
+          task_time: typeof record.task_time === 'string' ? record.task_time : '',
+          detail_color: normalizeDetailColor(record.detail_color),
         })) as TaskRecord[];
       } else {
-        const statusResult = await client
-          .from('tasks')
-          .select('user_id, week_start, day_index, row_index, title, notes, status')
-          .eq('user_id', activeUser.id)
-          .eq('week_start', weekKey)
-          .order('day_index', { ascending: true })
-          .order('row_index', { ascending: true });
+        const statusPrimaryColumns =
+          usesLegacyTimeColumn
+            ? usesLegacyDetailColorColumn
+              ? 'user_id, week_start, day_index, row_index, title, notes, status'
+              : 'user_id, week_start, day_index, row_index, title, notes, status, detail_color'
+            : usesLegacyDetailColorColumn
+              ? 'user_id, week_start, day_index, row_index, title, notes, status, task_time'
+              : 'user_id, week_start, day_index, row_index, title, notes, status, task_time, detail_color';
+        const statusFallbackColumns =
+          usesLegacyTimeColumn || usesLegacyDetailColorColumn
+            ? 'user_id, week_start, day_index, row_index, title, notes, status'
+            : 'user_id, week_start, day_index, row_index, title, notes, status, task_time';
+
+        let statusResult = await selectWithLegacyFallback(statusPrimaryColumns, statusFallbackColumns);
 
         error = statusResult.error;
-        data = (statusResult.data ?? []) as TaskRecord[];
+        data = ((statusResult.data ?? []) as Array<Partial<TaskRecord>>).map((record) => ({
+          ...record,
+          task_time: typeof record.task_time === 'string' ? record.task_time : '',
+          detail_color: normalizeDetailColor(record.detail_color),
+        })) as TaskRecord[];
 
         if (error?.message.includes('column tasks.status does not exist')) {
-          const legacyResult = await client
-            .from('tasks')
-            .select('user_id, week_start, day_index, row_index, title, notes, completed')
-            .eq('user_id', activeUser.id)
-            .eq('week_start', weekKey)
-            .order('day_index', { ascending: true })
-            .order('row_index', { ascending: true });
+          const legacyPrimaryColumns =
+            usesLegacyTimeColumn
+              ? usesLegacyDetailColorColumn
+                ? 'user_id, week_start, day_index, row_index, title, notes, completed'
+                : 'user_id, week_start, day_index, row_index, title, notes, completed, detail_color'
+              : usesLegacyDetailColorColumn
+                ? 'user_id, week_start, day_index, row_index, title, notes, completed, task_time'
+                : 'user_id, week_start, day_index, row_index, title, notes, completed, task_time, detail_color';
+          const legacyFallbackColumns =
+            usesLegacyTimeColumn || usesLegacyDetailColorColumn
+              ? 'user_id, week_start, day_index, row_index, title, notes, completed'
+              : 'user_id, week_start, day_index, row_index, title, notes, completed, task_time';
+
+          const legacyResult = await selectWithLegacyFallback(legacyPrimaryColumns, legacyFallbackColumns);
 
           error = legacyResult.error;
-          data = (legacyResult.data ?? []).map((record) => ({
+          data = ((legacyResult.data ?? []) as unknown as LegacyTaskRecord[]).map((record) => ({
             ...record,
-            status: normalizeStatus(undefined, (record as LegacyTaskRecord).completed),
+            status: normalizeStatus(undefined, record.completed),
+            task_time: typeof record.task_time === 'string' ? record.task_time : '',
+            detail_color: normalizeDetailColor(record.detail_color),
           })) as TaskRecord[];
           setUsesLegacyCompletedColumn(true);
         }
@@ -797,11 +1056,35 @@ function App() {
     return () => {
       ignore = true;
     };
-  }, [hasHydratedLocalCache, user, weekKey, weekStart]);
+  }, [hasHydratedLocalCache, user, weekKey, weekStart, usesLegacyCompletedColumn, usesLegacyTimeColumn, usesLegacyDetailColorColumn]);
 
   useEffect(() => {
+    if (!hasHydratedLocalCache) {
+      return;
+    }
+
     window.localStorage.setItem(STORAGE_PREFIX, JSON.stringify(savedWeeks));
-  }, [savedWeeks]);
+  }, [hasHydratedLocalCache, savedWeeks]);
+
+  useEffect(() => {
+    if (!hasHydratedLocalCache) {
+      return;
+    }
+
+    window.localStorage.setItem(MISC_STORAGE_PREFIX, JSON.stringify(miscTasksByWeek));
+  }, [hasHydratedLocalCache, miscTasksByWeek]);
+
+  useEffect(() => {
+    if (!hasHydratedLocalCache) {
+      return;
+    }
+
+    if (plannerTitleOverride.trim()) {
+      window.localStorage.setItem(PLANNER_TITLE_STORAGE_KEY, plannerTitleOverride);
+    } else {
+      window.localStorage.removeItem(PLANNER_TITLE_STORAGE_KEY);
+    }
+  }, [hasHydratedLocalCache, plannerTitleOverride]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -922,6 +1205,8 @@ function App() {
       row_index: rowIndex,
       title: row.title,
       notes: row.notes,
+      ...(usesLegacyTimeColumn ? {} : { task_time: row.time }),
+      ...(usesLegacyDetailColorColumn ? {} : { detail_color: row.detailColor }),
     };
 
     const { error } = usesLegacyCompletedColumn
@@ -982,11 +1267,19 @@ function App() {
         row_index: rowIndex,
         title: row.title,
         notes: row.notes,
+        ...(usesLegacyTimeColumn ? {} : { task_time: row.time }),
+        ...(usesLegacyDetailColorColumn ? {} : { detail_color: row.detailColor }),
         ...(usesLegacyCompletedColumn
           ? { completed: row.status === 'done' }
           : { status: row.status }),
       }))
-      .filter((row) => row.title.trim() !== '' || row.notes.trim() !== '' || ('status' in row ? row.status !== 'none' : row.completed));
+      .filter(
+        (row) =>
+          row.title.trim() !== '' ||
+          row.notes.trim() !== '' ||
+          ('task_time' in row && typeof row.task_time === 'string' && row.task_time.trim() !== '') ||
+          ('status' in row ? row.status !== 'none' : row.completed),
+      );
 
     if (populatedRows.length === 0) {
       return;
@@ -1058,24 +1351,27 @@ function App() {
   }
 
   function updateRow(dayKey: string, rowId: string, field: keyof TaskRow, value: string) {
-    const currentWeek = savedWeeks[weekKey] ?? {};
-    const currentRows = currentWeek[dayKey] ?? createEmptyRows(dayKey);
-    const existingRow = currentRows.find((row) => row.id === rowId);
+    updateRowFields(dayKey, rowId, { [field]: value } as Partial<TaskRow>);
+  }
 
-    if (!existingRow) {
-      return;
-    }
-
-    const updatedRow: TaskRow = {
-      ...existingRow,
-      [field]: value,
-    };
+  function updateRowFields(dayKey: string, rowId: string, fields: Partial<TaskRow>) {
+    let updatedRow: TaskRow | null = null;
 
     setSavedWeeks((current) => {
       const currentWeekState = current[weekKey] ?? {};
       const currentRowsState = currentWeekState[dayKey] ?? createEmptyRows(dayKey);
+      const existingRow = currentRowsState.find((row) => row.id === rowId);
 
-      const nextRows = currentRowsState.map((row) => (row.id === rowId ? updatedRow : row));
+      if (!existingRow) {
+        return current;
+      }
+
+      updatedRow = {
+        ...existingRow,
+        ...fields,
+      };
+
+      const nextRows = currentRowsState.map((row) => (row.id === rowId ? (updatedRow as TaskRow) : row));
 
       const nextState = {
         ...current,
@@ -1090,7 +1386,7 @@ function App() {
       return nextState;
     });
 
-    if (supabase && user) {
+    if (supabase && user && updatedRow) {
       void persistRow(dayKey, updatedRow);
     }
   }
@@ -1108,11 +1404,212 @@ function App() {
     setActiveNotesEditor(null);
   }
 
+  function closeStatusEditor() {
+    setActiveStatusEditor(null);
+  }
+
+  function openPriorityPicker(dayKey: string, row: TaskRow) {
+    setActivePriorityPicker({
+      dayKey,
+      rowId: row.id,
+      value: getCustomDetailValue(row) || row.status,
+      color: row.detailColor,
+    });
+  }
+
+  function closePriorityPicker() {
+    setActivePriorityPicker(null);
+  }
+
   function updateActiveNotes(notes: string) {
     setActiveNotesEditor((current) => (current ? { ...current, notes } : current));
     if (activeNotesEditor) {
       updateRow(activeNotesEditor.dayKey, activeNotesEditor.rowId, 'notes', notes);
     }
+  }
+
+  function updateActiveTaskTitle(title: string) {
+    setActiveNotesEditor((current) => (current ? { ...current, taskTitle: title } : current));
+    if (activeNotesEditor) {
+      updateRow(activeNotesEditor.dayKey, activeNotesEditor.rowId, 'title', title);
+    }
+  }
+
+  function saveCustomStatus(status: string, color: DetailColor) {
+    if (!activeStatusEditor) {
+      return;
+    }
+
+    const trimmed = status.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    updateRowFields(activeStatusEditor.dayKey, activeStatusEditor.rowId, {
+      status: 'none',
+      time: trimmed,
+      detailColor: color,
+      priorityDismissed: false,
+    });
+    setActiveStatusEditor(null);
+  }
+
+  function selectPriorityOption(option: (typeof PRESET_PRIORITY_OPTIONS)[number]) {
+    if (!activePriorityPicker) {
+      return;
+    }
+
+    updateRowFields(activePriorityPicker.dayKey, activePriorityPicker.rowId, {
+      time: '',
+      status: option,
+      priorityDismissed: option === 'none',
+    });
+    setActivePriorityPicker(null);
+  }
+
+  function openCustomFromPriorityPicker() {
+    if (!activePriorityPicker) {
+      return;
+    }
+
+    setActiveStatusEditor({
+      dayKey: activePriorityPicker.dayKey,
+      rowId: activePriorityPicker.rowId,
+      status: activePriorityPicker.value === 'none' ? '' : activePriorityPicker.value,
+      color: activePriorityPicker.color,
+    });
+    setActivePriorityPicker(null);
+  }
+
+  function addMiscTask() {
+    const trimmed = miscTaskInput.trim();
+
+    if (!trimmed) {
+      return;
+    }
+
+    setMiscTasksByWeek((current) => ({
+      ...current,
+      [weekKey]: [...(current[weekKey] ?? []), createMiscTask(trimmed)],
+    }));
+    setMiscTaskInput('');
+  }
+
+  function deleteMiscTask(taskId: string) {
+    setMiscTasksByWeek((current) => ({
+      ...current,
+      [weekKey]: (current[weekKey] ?? []).filter((task) => task.id !== taskId),
+    }));
+  }
+
+  function moveMiscTaskToWeek(taskId: string, offset: number) {
+    const task = (miscTasksByWeek[weekKey] ?? []).find((item) => item.id === taskId);
+
+    if (!task) {
+      return;
+    }
+
+    const targetWeekKey = shiftWeekKeyByOffset(weekKey, offset);
+
+    setMiscTasksByWeek((current) => ({
+      ...current,
+      [weekKey]: (current[weekKey] ?? []).filter((item) => item.id !== taskId),
+      [targetWeekKey]: [...(current[targetWeekKey] ?? []), task],
+    }));
+    setDraggedMiscTaskId(null);
+  }
+
+  function assignMiscTaskToRow(dayKey: string, rowId: string, taskId: string) {
+    const task = (miscTasksByWeek[weekKey] ?? []).find((item) => item.id === taskId);
+
+    if (!task) {
+      return;
+    }
+
+    updateRow(dayKey, rowId, 'title', task.text);
+    setMiscTasksByWeek((current) => ({
+      ...current,
+      [weekKey]: (current[weekKey] ?? []).filter((item) => item.id !== taskId),
+    }));
+    setDraggedMiscTaskId(null);
+  }
+
+  function moveTaskRow(sourceDayKey: string, sourceRowId: string, targetDayKey: string, targetRowId: string) {
+    if (sourceDayKey === targetDayKey && sourceRowId === targetRowId) {
+      return;
+    }
+
+    const currentWeek = savedWeeks[weekKey] ?? {};
+    const sourceRows = [...(currentWeek[sourceDayKey] ?? createEmptyRows(sourceDayKey))];
+    const targetRows = sourceDayKey === targetDayKey ? sourceRows : [...(currentWeek[targetDayKey] ?? createEmptyRows(targetDayKey))];
+    const sourceIndex = sourceRows.findIndex((row) => row.id === sourceRowId);
+    const targetIndex = targetRows.findIndex((row) => row.id === targetRowId);
+
+    if (sourceIndex < 0 || targetIndex < 0) {
+      return;
+    }
+
+    let nextSourceRows = sourceRows;
+    let nextTargetRows = targetRows;
+
+    if (sourceDayKey === targetDayKey) {
+      const [movedRow] = nextSourceRows.splice(sourceIndex, 1);
+      nextSourceRows.splice(targetIndex, 0, movedRow);
+      nextSourceRows = reindexRows(sourceDayKey, nextSourceRows);
+    } else {
+      const sourceRow = sourceRows[sourceIndex];
+      const targetRow = targetRows[targetIndex];
+
+      if (isRowEmpty(targetRow)) {
+        nextSourceRows[sourceIndex] = createEmptyRow(sourceDayKey, sourceIndex);
+        nextTargetRows[targetIndex] = {
+          ...createEmptyRow(targetDayKey, targetIndex),
+          title: sourceRow.title,
+          notes: sourceRow.notes,
+          status: sourceRow.status,
+        };
+      } else {
+        nextSourceRows[sourceIndex] = {
+          ...createEmptyRow(sourceDayKey, sourceIndex),
+          title: targetRow.title,
+          notes: targetRow.notes,
+          status: targetRow.status,
+        };
+        nextTargetRows[targetIndex] = {
+          ...createEmptyRow(targetDayKey, targetIndex),
+          title: sourceRow.title,
+          notes: sourceRow.notes,
+          status: sourceRow.status,
+        };
+      }
+
+      nextSourceRows = reindexRows(sourceDayKey, nextSourceRows);
+      nextTargetRows = reindexRows(targetDayKey, nextTargetRows);
+    }
+
+    setSavedWeeks((current) => {
+      const week = current[weekKey] ?? {};
+      const nextState = {
+        ...current,
+        [weekKey]: {
+          ...week,
+          [sourceDayKey]: nextSourceRows,
+          ...(sourceDayKey === targetDayKey ? {} : { [targetDayKey]: nextTargetRows }),
+        },
+      };
+
+      window.localStorage.setItem(STORAGE_PREFIX, JSON.stringify(nextState));
+      return nextState;
+    });
+
+    if (supabase && user) {
+      void syncDayRows(sourceDayKey, nextSourceRows);
+      if (sourceDayKey !== targetDayKey) {
+        void syncDayRows(targetDayKey, nextTargetRows);
+      }
+    }
+
+    setDraggedTaskRow(null);
   }
 
   function moveWeek(offset: number) {
@@ -1249,31 +1746,29 @@ function App() {
       <header className="top-actions">
         <div className="top-toolbar">
           <div className="top-toolbar-controls">
-            <div>
-              <h2 className="top-toolbar-title">{plannerTitle}</h2>
-              <p className="top-toolbar-range">{topBarRange}</p>
-            </div>
-
-            <div className="top-toolbar-group" aria-label="Week navigation">
-              <button type="button" className="nav-button nav-button-inline nav-arrow" onClick={() => moveWeek(-1)} aria-label={ui.previousWeek}>
-                ←
-              </button>
-              <button type="button" className="nav-button nav-button-primary" onClick={resetToCurrentWeek}>
+            <div className="top-toolbar-identity">
+              <button type="button" className="nav-button" onClick={resetToCurrentWeek}>
                 {ui.today}
               </button>
-              <button type="button" className="nav-button nav-button-inline nav-arrow" onClick={() => moveWeek(1)} aria-label={ui.nextWeek}>
-                →
-              </button>
-            </div>
 
-            <div className="top-toolbar-group" aria-label="Planner actions">
-              <button type="button" className="nav-button" onClick={() => setIsCalendarOpen(true)}>
-                {ui.calendar}
-              </button>
+              <div>
+                <input
+                  className="top-toolbar-title-input"
+                  value={plannerTitle}
+                  onChange={(event) => setPlannerTitleOverride(event.target.value)}
+                  placeholder={defaultPlannerTitle}
+                  aria-label={ui.weeklyPlanner}
+                />
+                <p className="top-toolbar-range">{topBarRange}</p>
+              </div>
             </div>
           </div>
 
           <div className="top-toolbar-summary">
+            <button type="button" className="nav-button" onClick={() => setIsCalendarOpen(true)}>
+              {ui.calendar}
+            </button>
+
             <div className="search-shell">
               <input
                 className="search-input"
@@ -1382,65 +1877,219 @@ function App() {
       </header>
 
       <main className="spread-stage">
-        {pageTurn ? (
-          <div className={`spread spread-turn-layer spread-outgoing is-${pageTurn.direction}`} aria-hidden="true">
+        <button
+          type="button"
+          className="spread-hit-zone spread-hit-zone-left"
+          onClick={() => moveWeek(-1)}
+          onDragOver={(event) => {
+            if (!draggedMiscTaskId) {
+              return;
+            }
+
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            const taskId = event.dataTransfer.getData('text/plain') || draggedMiscTaskId;
+
+            if (taskId) {
+              moveMiscTaskToWeek(taskId, -1);
+            }
+          }}
+          aria-label={ui.previousWeek}
+        >
+          <span className="spread-hit-zone-indicator" aria-hidden="true">
+            {'<'}
+          </span>
+        </button>
+        <button
+          type="button"
+          className="spread-hit-zone spread-hit-zone-right"
+          onClick={() => moveWeek(1)}
+          onDragOver={(event) => {
+            if (!draggedMiscTaskId) {
+              return;
+            }
+
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            const taskId = event.dataTransfer.getData('text/plain') || draggedMiscTaskId;
+
+            if (taskId) {
+              moveMiscTaskToWeek(taskId, 1);
+            }
+          }}
+          aria-label={ui.nextWeek}
+        >
+          <span className="spread-hit-zone-indicator" aria-hidden="true">
+            {'>'}
+          </span>
+        </button>
+
+        <div className="spread-frame">
+          {pageTurn ? (
+            <div className={`spread spread-turn-layer spread-outgoing is-${pageTurn.direction}`} aria-hidden="true">
+              <PageSheet
+                headerLabel={formatSheetRange(outgoingLeftPage, language)}
+                days={outgoingLeftPage}
+                ui={ui}
+                onUpdateRow={updateRow}
+                onUpdateRowFields={updateRowFields}
+                onAddRow={addRow}
+                onDeleteRow={deleteRow}
+                onMoveTaskRow={moveTaskRow}
+                onOpenNotes={openNotesEditor}
+                onOpenPriorityPicker={openPriorityPicker}
+                onAssignMiscTask={assignMiscTaskToRow}
+                draggedMiscTaskId={draggedMiscTaskId}
+                draggedTaskRow={draggedTaskRow}
+                onSetDraggedTaskRow={setDraggedTaskRow}
+                activeDayIndex={getActiveDayIndexForWeek(outgoingWeekKey, todayWeekKey, todayDayIndex)}
+                activeSearchRowId={activeSearchRowId}
+              />
+              <PageSheet
+                headerLabel={formatSheetRange(outgoingRightPage, language)}
+                days={outgoingRightPage}
+                ui={ui}
+                onUpdateRow={updateRow}
+                onUpdateRowFields={updateRowFields}
+                onAddRow={addRow}
+                onDeleteRow={deleteRow}
+                onMoveTaskRow={moveTaskRow}
+                onOpenNotes={openNotesEditor}
+                onOpenPriorityPicker={openPriorityPicker}
+                onAssignMiscTask={assignMiscTaskToRow}
+                draggedMiscTaskId={draggedMiscTaskId}
+                draggedTaskRow={draggedTaskRow}
+                onSetDraggedTaskRow={setDraggedTaskRow}
+                activeDayIndex={getActiveDayIndexForWeek(outgoingWeekKey, todayWeekKey, todayDayIndex)}
+                activeSearchRowId={activeSearchRowId}
+              />
+            </div>
+          ) : null}
+
+          <div className={`spread spread-current ${pageTurn ? `is-turning is-${pageTurn.direction}` : ''}`}>
             <PageSheet
-              headerLabel={formatSheetRange(outgoingLeftPage, language)}
-              days={outgoingLeftPage}
+              headerLabel={formatSheetRange(leftPage, language)}
+              days={leftPage}
               ui={ui}
               onUpdateRow={updateRow}
+              onUpdateRowFields={updateRowFields}
               onAddRow={addRow}
               onDeleteRow={deleteRow}
+              onMoveTaskRow={moveTaskRow}
               onOpenNotes={openNotesEditor}
-              activeDayIndex={getActiveDayIndexForWeek(outgoingWeekKey, todayWeekKey, todayDayIndex)}
+              onOpenPriorityPicker={openPriorityPicker}
+              onAssignMiscTask={assignMiscTaskToRow}
+              draggedMiscTaskId={draggedMiscTaskId}
+              draggedTaskRow={draggedTaskRow}
+              onSetDraggedTaskRow={setDraggedTaskRow}
+              activeDayIndex={getActiveDayIndexForWeek(weekKey, todayWeekKey, todayDayIndex)}
               activeSearchRowId={activeSearchRowId}
             />
             <PageSheet
-              headerLabel={formatSheetRange(outgoingRightPage, language)}
-              days={outgoingRightPage}
+              headerLabel={formatSheetRange(rightPage, language)}
+              days={rightPage}
               ui={ui}
               onUpdateRow={updateRow}
+              onUpdateRowFields={updateRowFields}
               onAddRow={addRow}
               onDeleteRow={deleteRow}
+              onMoveTaskRow={moveTaskRow}
               onOpenNotes={openNotesEditor}
-              activeDayIndex={getActiveDayIndexForWeek(outgoingWeekKey, todayWeekKey, todayDayIndex)}
+              onOpenPriorityPicker={openPriorityPicker}
+              onAssignMiscTask={assignMiscTaskToRow}
+              draggedMiscTaskId={draggedMiscTaskId}
+              draggedTaskRow={draggedTaskRow}
+              onSetDraggedTaskRow={setDraggedTaskRow}
+              activeDayIndex={getActiveDayIndexForWeek(weekKey, todayWeekKey, todayDayIndex)}
               activeSearchRowId={activeSearchRowId}
             />
           </div>
-        ) : null}
-
-        <div className={`spread spread-current ${pageTurn ? `is-turning is-${pageTurn.direction}` : ''}`}>
-          <PageSheet
-            headerLabel={formatSheetRange(leftPage, language)}
-            days={leftPage}
-            ui={ui}
-            onUpdateRow={updateRow}
-            onAddRow={addRow}
-            onDeleteRow={deleteRow}
-            onOpenNotes={openNotesEditor}
-            activeDayIndex={getActiveDayIndexForWeek(weekKey, todayWeekKey, todayDayIndex)}
-            activeSearchRowId={activeSearchRowId}
-          />
-          <PageSheet
-            headerLabel={formatSheetRange(rightPage, language)}
-            days={rightPage}
-            ui={ui}
-            onUpdateRow={updateRow}
-            onAddRow={addRow}
-            onDeleteRow={deleteRow}
-            onOpenNotes={openNotesEditor}
-            activeDayIndex={getActiveDayIndexForWeek(weekKey, todayWeekKey, todayDayIndex)}
-            activeSearchRowId={activeSearchRowId}
-          />
         </div>
       </main>
+
+      <section className="misc-inbox-shell">
+        <form
+          className="misc-inbox-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            addMiscTask();
+          }}
+        >
+          <div className="misc-inbox-input-shell">
+            <input
+              className="misc-inbox-input"
+              value={miscTaskInput}
+              onChange={(event) => setMiscTaskInput(event.target.value)}
+              placeholder={ui.miscTasksPlaceholder}
+              aria-label={ui.miscTasksTitle}
+            />
+          </div>
+        </form>
+
+        <div className="misc-task-list">
+          {miscTasks.length > 0 ? (
+            miscTasks.map((task) => (
+              <div
+                key={task.id}
+                className={`misc-task-chip ${draggedMiscTaskId === task.id ? 'is-dragging' : ''}`}
+                draggable
+                onDragStart={(event) => {
+                  event.dataTransfer.setData('text/plain', task.id);
+                  event.dataTransfer.effectAllowed = 'move';
+                  setDraggedMiscTaskId(task.id);
+                }}
+                onDragEnd={() => setDraggedMiscTaskId(null)}
+              >
+                <span className="misc-task-text">{task.text}</span>
+                <span className="misc-task-actions" aria-hidden="true">
+                  <span className="misc-task-drag">drag</span>
+                  <button
+                    type="button"
+                    className="misc-task-delete"
+                    onClick={() => deleteMiscTask(task.id)}
+                    aria-label={ui.deleteMiscTask}
+                  >
+                    ×
+                  </button>
+                </span>
+              </div>
+            ))
+          ) : null}
+        </div>
+      </section>
 
       {activeNotesEditor ? (
         <NotesDialog
           activeNotesEditor={activeNotesEditor}
           ui={ui}
           onClose={closeNotesEditor}
+          onChangeTaskTitle={updateActiveTaskTitle}
           onChangeNotes={updateActiveNotes}
+        />
+      ) : null}
+
+      {activeStatusEditor ? (
+        <CustomStatusDialog
+          ui={ui}
+          activeStatusEditor={activeStatusEditor}
+          onClose={closeStatusEditor}
+          onSave={saveCustomStatus}
+        />
+      ) : null}
+
+      {activePriorityPicker ? (
+        <PriorityDialog
+          ui={ui}
+          activePriorityPicker={activePriorityPicker}
+          onClose={closePriorityPicker}
+          onSelect={selectPriorityOption}
+          onCustom={openCustomFromPriorityPicker}
         />
       ) : null}
 
@@ -1541,9 +2190,16 @@ type PageSheetProps = {
   days: DayData[];
   ui: UiText;
   onUpdateRow: (dayKey: string, rowId: string, field: keyof TaskRow, value: string) => void;
+  onUpdateRowFields: (dayKey: string, rowId: string, fields: Partial<TaskRow>) => void;
   onAddRow: (dayKey: string) => void;
   onDeleteRow: (dayKey: string, rowId: string) => void;
+  onMoveTaskRow: (sourceDayKey: string, sourceRowId: string, targetDayKey: string, targetRowId: string) => void;
   onOpenNotes: (dayKey: string, row: TaskRow) => void;
+  onOpenPriorityPicker: (dayKey: string, row: TaskRow) => void;
+  onAssignMiscTask: (dayKey: string, rowId: string, taskId: string) => void;
+  draggedMiscTaskId: string | null;
+  draggedTaskRow: DraggedTaskRow | null;
+  onSetDraggedTaskRow: (value: DraggedTaskRow | null) => void;
   activeDayIndex: number | null;
   activeSearchRowId: string | null;
 };
@@ -1553,9 +2209,16 @@ function PageSheet({
   days,
   ui,
   onUpdateRow,
+  onUpdateRowFields,
   onAddRow,
   onDeleteRow,
+  onMoveTaskRow,
   onOpenNotes,
+  onOpenPriorityPicker,
+  onAssignMiscTask,
+  draggedMiscTaskId,
+  draggedTaskRow,
+  onSetDraggedTaskRow,
   activeDayIndex,
   activeSearchRowId,
 }: PageSheetProps) {
@@ -1574,9 +2237,16 @@ function PageSheet({
             day={day}
             ui={ui}
             onUpdateRow={onUpdateRow}
+            onUpdateRowFields={onUpdateRowFields}
             onAddRow={onAddRow}
             onDeleteRow={onDeleteRow}
+            onMoveTaskRow={onMoveTaskRow}
             onOpenNotes={onOpenNotes}
+            onOpenPriorityPicker={onOpenPriorityPicker}
+            onAssignMiscTask={onAssignMiscTask}
+            draggedMiscTaskId={draggedMiscTaskId}
+            draggedTaskRow={draggedTaskRow}
+            onSetDraggedTaskRow={onSetDraggedTaskRow}
             isActive={getDayIndex(day.key) === activeDayIndex}
             activeSearchRowId={activeSearchRowId}
           />
@@ -1590,31 +2260,49 @@ type DaySectionProps = {
   day: DayData;
   ui: UiText;
   onUpdateRow: (dayKey: string, rowId: string, field: keyof TaskRow, value: string) => void;
+  onUpdateRowFields: (dayKey: string, rowId: string, fields: Partial<TaskRow>) => void;
   onAddRow: (dayKey: string) => void;
   onDeleteRow: (dayKey: string, rowId: string) => void;
+  onMoveTaskRow: (sourceDayKey: string, sourceRowId: string, targetDayKey: string, targetRowId: string) => void;
   onOpenNotes: (dayKey: string, row: TaskRow) => void;
+  onOpenPriorityPicker: (dayKey: string, row: TaskRow) => void;
+  onAssignMiscTask: (dayKey: string, rowId: string, taskId: string) => void;
+  draggedMiscTaskId: string | null;
+  draggedTaskRow: DraggedTaskRow | null;
+  onSetDraggedTaskRow: (value: DraggedTaskRow | null) => void;
   isActive: boolean;
   activeSearchRowId: string | null;
 };
 
-function DaySection({ day, ui, onUpdateRow, onAddRow, onDeleteRow, onOpenNotes, isActive, activeSearchRowId }: DaySectionProps) {
+function DaySection({
+  day,
+  ui,
+  onUpdateRow,
+  onUpdateRowFields,
+  onAddRow,
+  onDeleteRow,
+  onMoveTaskRow,
+  onOpenNotes,
+  onOpenPriorityPicker,
+  onAssignMiscTask,
+  draggedMiscTaskId,
+  draggedTaskRow,
+  onSetDraggedTaskRow,
+  isActive,
+  activeSearchRowId,
+}: DaySectionProps) {
   const dateKey = day.key.split('-').slice(1).join('-');
   const dayNumber = new Date(`${dateKey}T00:00:00`).getDate();
   const hasReachedRowLimit = day.rows.length >= MAX_ROW_COUNT;
-  const [sortMode, setSortMode] = useState<'manual' | 'urgency'>('manual');
-  const displayedRows = useMemo(() => {
-    if (sortMode === 'manual') {
-      return day.rows;
-    }
+  const [dragTargetRowId, setDragTargetRowId] = useState<string | null>(null);
+  const [dragTargetKind, setDragTargetKind] = useState<'misc' | 'task' | null>(null);
 
-    return day.rows
-      .map((row, index) => ({ row, index }))
-      .sort((left, right) => {
-        const weightDifference = getStatusSortWeight(left.row.status) - getStatusSortWeight(right.row.status);
-        return weightDifference !== 0 ? weightDifference : left.index - right.index;
-      })
-      .map(({ row }) => row);
-  }, [day.rows, sortMode]);
+  useEffect(() => {
+    if (!draggedMiscTaskId && !draggedTaskRow) {
+      setDragTargetRowId(null);
+      setDragTargetKind(null);
+    }
+  }, [draggedMiscTaskId, draggedTaskRow]);
 
   return (
     <section className="day-section">
@@ -1630,22 +2318,75 @@ function DaySection({ day, ui, onUpdateRow, onAddRow, onDeleteRow, onOpenNotes, 
           <span>#</span>
           <span>{ui.task}</span>
           <span>{ui.notes}</span>
-          <button
-            type="button"
-            className="status-sort-button"
-            onClick={() => setSortMode((current) => (current === 'manual' ? 'urgency' : 'manual'))}
-            aria-label={ui.statusSortAria}
-          >
-            <span>{ui.statusSortLabel}</span>
-            <span className="status-sort-mode">{sortMode === 'manual' ? ui.statusSortManual : ui.statusSortUrgency}</span>
-          </button>
+          <span>{ui.statusSortLabel}</span>
         </div>
 
-        {displayedRows.map((row, index) => (
-          <div key={row.id} className={`task-grid-row ${activeSearchRowId === row.id ? 'is-search-hit' : ''}`}>
-            <div className={`row-number row-number-cell ${index === displayedRows.length - 1 ? 'is-row-actions' : ''}`}>
+        {day.rows.map((row, index) => (
+          <div
+            key={row.id}
+            className={`task-grid-row ${activeSearchRowId === row.id ? 'is-search-hit' : ''} ${
+              dragTargetRowId === row.id ? `is-drop-target is-drop-target-${dragTargetKind ?? 'task'}` : ''
+            }`}
+            onDragOver={(event) => {
+              if (!draggedMiscTaskId && !draggedTaskRow) {
+                return;
+              }
+
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'move';
+              setDragTargetRowId(row.id);
+              setDragTargetKind(draggedMiscTaskId ? 'misc' : 'task');
+            }}
+            onDragLeave={() => {
+              if (dragTargetRowId === row.id) {
+                setDragTargetRowId(null);
+                setDragTargetKind(null);
+              }
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              const taskId = event.dataTransfer.getData('text/plain') || draggedMiscTaskId;
+              const plannerRow = event.dataTransfer.getData('application/x-dnevnik-task-row');
+              setDragTargetRowId(null);
+              setDragTargetKind(null);
+
+              if (taskId) {
+                onAssignMiscTask(day.key, row.id, taskId);
+                return;
+              }
+
+              if (plannerRow) {
+                try {
+                  const source = JSON.parse(plannerRow) as DraggedTaskRow;
+                  onMoveTaskRow(source.dayKey, source.rowId, day.key, row.id);
+                } catch {
+                  // Ignore invalid drag payloads.
+                }
+              } else if (draggedTaskRow) {
+                onMoveTaskRow(draggedTaskRow.dayKey, draggedTaskRow.rowId, day.key, row.id);
+              }
+            }}
+          >
+            <div
+              className={`row-number row-number-cell ${index === day.rows.length - 1 ? 'is-row-actions' : ''} ${
+                !isRowEmpty(row) ? 'is-draggable' : ''
+              } ${draggedTaskRow?.rowId === row.id ? 'is-drag-source' : ''}`}
+              draggable={!isRowEmpty(row)}
+              onDragStart={(event) => {
+                if (isRowEmpty(row)) {
+                  event.preventDefault();
+                  return;
+                }
+
+                const payload = JSON.stringify({ dayKey: day.key, rowId: row.id });
+                event.dataTransfer.setData('application/x-dnevnik-task-row', payload);
+                event.dataTransfer.effectAllowed = 'move';
+                onSetDraggedTaskRow({ dayKey: day.key, rowId: row.id });
+              }}
+              onDragEnd={() => onSetDraggedTaskRow(null)}
+            >
               <span className="row-number-label">{index + 1}</span>
-              {index === displayedRows.length - 1 ? (
+              {index === day.rows.length - 1 ? (
                 <span className="row-number-actions">
                   <button
                     type="button"
@@ -1672,7 +2413,21 @@ function DaySection({ day, ui, onUpdateRow, onAddRow, onDeleteRow, onOpenNotes, 
             <input
               className={`cell-input ${row.status === 'done' ? 'is-complete' : ''}`}
               value={row.title}
-              onChange={(event) => onUpdateRow(day.key, row.id, 'title', event.target.value)}
+              onChange={(event) => {
+                const nextTitle = event.target.value;
+                const wasEmpty = row.title.trim() === '';
+                const isNowFilled = nextTitle.trim() !== '';
+
+                if (wasEmpty && isNowFilled) {
+                  onUpdateRowFields(day.key, row.id, {
+                    title: nextTitle,
+                    priorityDismissed: false,
+                  });
+                  return;
+                }
+
+                onUpdateRow(day.key, row.id, 'title', nextTitle);
+              }}
             />
             <button
               type="button"
@@ -1685,18 +2440,35 @@ function DaySection({ day, ui, onUpdateRow, onAddRow, onDeleteRow, onOpenNotes, 
               />
             </button>
             <div className="status-cell">
-              <select
-                className={`status-select status-${row.status}`}
-                value={row.status}
-                onChange={(event) => onUpdateRow(day.key, row.id, 'status', event.target.value)}
-                aria-label={`${ui.status}: ${getStatusLabel(row.status, ui)}`}
-              >
-                <option value="none">{ui.statusSet}</option>
-                <option value="low">{ui.statusLow}</option>
-                <option value="urgent">{ui.statusUrgent}</option>
-                <option value="critical">{ui.statusCritical}</option>
-                <option value="done">{ui.statusDone}</option>
-              </select>
+              {row.title.trim() ? (
+                (() => {
+                  const customDetail = getCustomDetailValue(row);
+                  const hasVisiblePriority = Boolean(customDetail || row.status !== 'none');
+                  const shouldRevealPrompt = !hasVisiblePriority && !row.priorityDismissed;
+
+                  return (
+                    <button
+                      type="button"
+                      className={`priority-trigger ${
+                        hasVisiblePriority
+                          ? customDetail
+                            ? `detail-${row.detailColor}`
+                            : `status-${row.status}`
+                          : shouldRevealPrompt
+                            ? 'status-none'
+                            : 'is-empty-priority'
+                      }`}
+                      onClick={() => onOpenPriorityPicker(day.key, row)}
+                      aria-haspopup="dialog"
+                      aria-label={`${ui.statusSortLabel}: ${hasVisiblePriority || shouldRevealPrompt ? customDetail || getStatusLabel(row.status, ui) : ui.statusSet}`}
+                    >
+                      {hasVisiblePriority || shouldRevealPrompt ? customDetail || getStatusLabel(row.status, ui) : ui.statusSet}
+                    </button>
+                  );
+                })()
+              ) : (
+                <span className="status-empty" aria-hidden="true" />
+              )}
             </div>
           </div>
         ))}
@@ -1709,7 +2481,23 @@ type NotesDialogProps = {
   activeNotesEditor: ActiveNotesEditor;
   ui: UiText;
   onClose: () => void;
+  onChangeTaskTitle: (title: string) => void;
   onChangeNotes: (notes: string) => void;
+};
+
+type CustomStatusDialogProps = {
+  activeStatusEditor: ActiveStatusEditor;
+  ui: UiText;
+  onClose: () => void;
+  onSave: (status: string, color: DetailColor) => void;
+};
+
+type PriorityDialogProps = {
+  activePriorityPicker: ActivePriorityPicker;
+  ui: UiText;
+  onClose: () => void;
+  onSelect: (option: (typeof PRESET_PRIORITY_OPTIONS)[number]) => void;
+  onCustom: () => void;
 };
 
 type CalendarNavigatorProps = {
@@ -1725,7 +2513,144 @@ type CalendarNavigatorProps = {
   onNextYear: () => void;
 };
 
-function NotesDialog({ activeNotesEditor, ui, onClose, onChangeNotes }: NotesDialogProps) {
+function CustomStatusDialog({ activeStatusEditor, ui, onClose, onSave }: CustomStatusDialogProps) {
+  const [value, setValue] = useState(activeStatusEditor.status);
+  const [color, setColor] = useState<DetailColor>(activeStatusEditor.color);
+
+  useEffect(() => {
+    setValue(activeStatusEditor.status);
+    setColor(activeStatusEditor.color);
+  }, [activeStatusEditor]);
+
+  useEffect(() => {
+    function handleKeydown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        onSave(value, color);
+      }
+    }
+
+    document.addEventListener('keydown', handleKeydown);
+    return () => document.removeEventListener('keydown', handleKeydown);
+  }, [color, onClose, onSave, value]);
+
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section className="meta-dialog" role="dialog" aria-modal="true" aria-labelledby="custom-status-dialog-title">
+        <div className="meta-dialog-header">
+          <div>
+            <p className="dialog-label">{ui.statusSortLabel}</p>
+            <h2 id="custom-status-dialog-title" className="dialog-title">
+              {ui.customStatusTitle}
+            </h2>
+          </div>
+          <button type="button" className="notes-dialog-close" onClick={onClose} aria-label={ui.close}>
+            ×
+          </button>
+        </div>
+
+        <input
+          className="meta-dialog-input"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          placeholder={ui.customStatusPlaceholder}
+          autoFocus
+        />
+
+        <div className="meta-dialog-color-group" aria-label={ui.detailColor}>
+          <p className="dialog-label">{ui.detailColor}</p>
+          <div className="meta-dialog-color-row">
+            {DETAIL_COLORS.map((option) => (
+              <button
+                key={option}
+                type="button"
+                className={`meta-color-chip color-${option} ${color === option ? 'is-active' : ''}`}
+                onClick={() => setColor(option)}
+                aria-label={getDetailColorLabel(option, ui)}
+                title={getDetailColorLabel(option, ui)}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="meta-dialog-actions">
+          <button type="button" className="nav-button" onClick={onClose}>
+            {ui.customStatusCancel}
+          </button>
+          <button type="button" className="nav-button" onClick={() => onSave(value, color)}>
+            {ui.customStatusSave}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function PriorityDialog({ activePriorityPicker, ui, onClose, onSelect, onCustom }: PriorityDialogProps) {
+  useEffect(() => {
+    function handleKeydown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+      }
+    }
+
+    document.addEventListener('keydown', handleKeydown);
+    return () => document.removeEventListener('keydown', handleKeydown);
+  }, [onClose]);
+
+  const currentValue = activePriorityPicker.value === 'none' ? ui.statusSet : activePriorityPicker.value;
+
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section className="meta-dialog priority-dialog" role="dialog" aria-modal="true" aria-labelledby="priority-dialog-title">
+        <div className="meta-dialog-header">
+          <div>
+            <p className="dialog-label">{ui.statusSortLabel}</p>
+            <h2 id="priority-dialog-title" className="dialog-title">
+              {currentValue}
+            </h2>
+          </div>
+          <button type="button" className="notes-dialog-close" onClick={onClose} aria-label={ui.close}>
+            ×
+          </button>
+        </div>
+
+        <div className="priority-dialog-options">
+          {PRESET_PRIORITY_OPTIONS.map((option) => (
+            <button
+              key={option}
+              type="button"
+              className={`priority-menu-item status-${option === 'none' ? 'none' : option}`}
+              onClick={() => onSelect(option)}
+            >
+              {option === 'none'
+                ? ui.statusNone
+                : option === 'low'
+                  ? ui.statusLow
+                  : option === 'urgent'
+                    ? ui.statusUrgent
+                    : option === 'critical'
+                      ? ui.statusCritical
+                      : ui.statusDone}
+            </button>
+          ))}
+          <button type="button" className="priority-menu-item detail-custom" onClick={onCustom}>
+            {ui.statusCustom}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function NotesDialog({ activeNotesEditor, ui, onClose, onChangeTaskTitle, onChangeNotes }: NotesDialogProps) {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const [activeFormats, setActiveFormats] = useState({
     bold: false,
@@ -1823,9 +2748,13 @@ function NotesDialog({ activeNotesEditor, ui, onClose, onChangeNotes }: NotesDia
         <div className="notes-dialog-header">
           <div>
             <p className="dialog-label">{ui.taskNotes}</p>
-            <h2 id="notes-dialog-title" className="dialog-title">
-              {activeNotesEditor.taskTitle || ui.untitledTask}
-            </h2>
+            <input
+              id="notes-dialog-title"
+              className="notes-dialog-title-input"
+              value={activeNotesEditor.taskTitle}
+              onChange={(event) => onChangeTaskTitle(event.target.value)}
+              placeholder={ui.untitledTask}
+            />
           </div>
           <button type="button" className="notes-dialog-close" onClick={onClose} aria-label={ui.close}>
             ×
