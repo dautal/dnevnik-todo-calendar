@@ -49,10 +49,13 @@ type TaskRecord = {
   completed: boolean;
 };
 
+type ThemeName = 'white' | 'paper' | 'night' | 'sepia' | 'blueprint';
+
 const ROW_COUNT = 6;
 const MAX_ROW_COUNT = 16;
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const STORAGE_PREFIX = 'dnevnik-week';
+const THEME_STORAGE_KEY = 'dnevnik-theme';
 const MONTH_NAMES = [
   'January',
   'February',
@@ -143,6 +146,63 @@ function formatTopBarRange(weekStart: Date) {
       year: 'numeric',
     },
   )}`;
+}
+
+function getUserDisplayName(user: User | null) {
+  if (!user) {
+    return 'Planner Settings';
+  }
+
+  const metadataName =
+    (typeof user.user_metadata?.full_name === 'string' && user.user_metadata.full_name) ||
+    (typeof user.user_metadata?.name === 'string' && user.user_metadata.name) ||
+    (typeof user.user_metadata?.user_name === 'string' && user.user_metadata.user_name);
+
+  return metadataName || user.email || 'Signed in user';
+}
+
+function getPlannerTitle(user: User | null) {
+  const displayName = getUserDisplayName(user);
+  const firstSegment = displayName.split(/[\s@._-]+/).find(Boolean);
+
+  if (!user || !firstSegment) {
+    return 'Weekly Planner';
+  }
+
+  const normalizedName = firstSegment.slice(0, 1).toUpperCase() + firstSegment.slice(1);
+  const suffix = normalizedName.endsWith('s') ? "'" : "'s";
+
+  return `${normalizedName}${suffix} Weekly Planner`;
+}
+
+function getUserAvatarUrl(user: User | null) {
+  if (!user) {
+    return '';
+  }
+
+  const avatarUrl =
+    (typeof user.user_metadata?.avatar_url === 'string' && user.user_metadata.avatar_url) ||
+    (typeof user.user_metadata?.picture === 'string' && user.user_metadata.picture);
+
+  return avatarUrl || '';
+}
+
+function getUserInitials(user: User | null) {
+  const label = getUserDisplayName(user);
+  const parts = label
+    .split(/[\s@._-]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return 'DN';
+  }
+
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+
+  return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
 }
 
 function getMonthCalendar(year: number, month: number): CalendarMonth {
@@ -328,18 +388,36 @@ function App() {
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()));
   const [savedWeeks, setSavedWeeks] = useState<Record<string, Record<string, TaskRow[]>>>({});
   const [activeNotesEditor, setActiveNotesEditor] = useState<ActiveNotesEditor | null>(null);
+  const [theme, setTheme] = useState<ThemeName>(() => {
+    const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+
+    if (
+      savedTheme === 'white' ||
+      savedTheme === 'paper' ||
+      savedTheme === 'night' ||
+      savedTheme === 'sepia' ||
+      savedTheme === 'blueprint'
+    ) {
+      return savedTheme;
+    }
+
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'paper';
+  });
   const [user, setUser] = useState<User | null>(null);
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authMessage, setAuthMessage] = useState('');
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [isWeekLoading, setIsWeekLoading] = useState(false);
+  const [showWeekLoadingBanner, setShowWeekLoadingBanner] = useState(false);
   const [storageError, setStorageError] = useState('');
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [visibleYear, setVisibleYear] = useState(() => new Date().getFullYear());
   const [hasHydratedLocalCache, setHasHydratedLocalCache] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSearchRowId, setActiveSearchRowId] = useState<string | null>(null);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const weekKey = formatWeekKey(weekStart);
   const yearMonths = useMemo(
     () => MONTH_NAMES.map((_, monthIndex) => getMonthCalendar(visibleYear, monthIndex)),
@@ -348,6 +426,10 @@ function App() {
   const activityMap = useMemo(() => buildActivityMap(savedWeeks), [savedWeeks]);
   const searchResults = useMemo(() => buildSearchResults(savedWeeks, searchQuery), [savedWeeks, searchQuery]);
   const topBarRange = useMemo(() => formatTopBarRange(weekStart), [weekStart]);
+  const userDisplayName = useMemo(() => getUserDisplayName(user), [user]);
+  const userAvatarUrl = useMemo(() => getUserAvatarUrl(user), [user]);
+  const userInitials = useMemo(() => getUserInitials(user), [user]);
+  const plannerTitle = useMemo(() => getPlannerTitle(user), [user]);
 
   useEffect(() => {
     const raw = window.localStorage.getItem(STORAGE_PREFIX);
@@ -438,6 +520,43 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(STORAGE_PREFIX, JSON.stringify(savedWeeks));
   }, [savedWeeks]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
+  useEffect(() => {
+    if (!isWeekLoading) {
+      setShowWeekLoadingBanner(false);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => setShowWeekLoadingBanner(true), 250);
+    return () => window.clearTimeout(timeout);
+  }, [isWeekLoading]);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!accountMenuRef.current?.contains(event.target as Node)) {
+        setIsAccountMenuOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsAccountMenuOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   const days = useMemo(() => {
     return buildDays(weekStart, savedWeeks[weekKey] ?? {});
@@ -797,14 +916,13 @@ function App() {
     <div className="app-shell">
       {authMessage ? <p className="status-banner">{authMessage}</p> : null}
       {storageError ? <p className="status-banner status-banner-error">{storageError}</p> : null}
-      {isWeekLoading ? <p className="status-banner">Loading this week from Supabase...</p> : null}
+      {showWeekLoadingBanner ? <p className="status-banner">Loading this week from Supabase...</p> : null}
 
       <header className="top-actions">
         <div className="top-toolbar">
           <div className="top-toolbar-summary">
-            <p className="top-toolbar-label">Dnevnik</p>
             <div>
-              <h2 className="top-toolbar-title">Weekly Planner</h2>
+              <h2 className="top-toolbar-title">{plannerTitle}</h2>
               <p className="top-toolbar-range">{topBarRange}</p>
             </div>
           </div>
@@ -861,20 +979,63 @@ function App() {
               </button>
             </div>
 
-            <div className="top-toolbar-account" aria-label="Storage and account">
-              <div>
-                <p className="top-toolbar-account-label">{isSupabaseConfigured ? 'Cloud Mode' : 'Local Mode'}</p>
-                <p className="top-toolbar-account-copy">
-                  {isSupabaseConfigured
-                    ? `Connected as ${user?.email ?? user?.id ?? 'Unknown user'}`
-                    : 'Add Supabase env vars to enable cloud sync.'}
-                </p>
-              </div>
+            <div className="account-menu-shell" ref={accountMenuRef}>
+              <button
+                type="button"
+                className={`account-trigger ${isAccountMenuOpen ? 'is-open' : ''}`}
+                onClick={() => setIsAccountMenuOpen((current) => !current)}
+                aria-label="Open account and settings"
+                aria-expanded={isAccountMenuOpen}
+              >
+                {userAvatarUrl ? (
+                  <img className="account-trigger-image" src={userAvatarUrl} alt={userDisplayName} />
+                ) : (
+                  <span>{userInitials}</span>
+                )}
+              </button>
 
-              {isSupabaseConfigured && user ? (
-                <button type="button" className="nav-button" onClick={signOut}>
-                  Sign out
-                </button>
+              {isAccountMenuOpen ? (
+                <div className="account-menu-panel" role="menu" aria-label="Account and settings">
+                  <div className="account-menu-header">
+                    <div className="account-menu-avatar">
+                      {userAvatarUrl ? (
+                        <img className="account-trigger-image" src={userAvatarUrl} alt={userDisplayName} />
+                      ) : (
+                        <span>{userInitials}</span>
+                      )}
+                    </div>
+                    <div>
+                      <p className="account-menu-label">{isSupabaseConfigured ? 'Cloud Mode' : 'Local Mode'}</p>
+                      <p className="account-menu-title">{userDisplayName}</p>
+                      <p className="account-menu-copy">
+                        {isSupabaseConfigured
+                          ? user?.email ?? user?.id ?? 'Connected account'
+                          : 'Add Supabase env vars to enable cloud sync.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="account-menu-section">
+                    <label className="account-menu-field">
+                      <span className="top-toolbar-group-label">Theme</span>
+                      <select className="theme-select" value={theme} onChange={(event) => setTheme(event.target.value as ThemeName)} aria-label="Theme">
+                        <option value="white">White</option>
+                        <option value="paper">Paper</option>
+                        <option value="night">Night</option>
+                        <option value="sepia">Sepia</option>
+                        <option value="blueprint">Blueprint</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  {isSupabaseConfigured && user ? (
+                    <div className="account-menu-section">
+                      <button type="button" className="nav-button account-menu-action" onClick={signOut}>
+                        Sign out
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           </div>
