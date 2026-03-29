@@ -8,11 +8,40 @@ create table public.tasks (
   row_index int not null,
   title text not null default '',
   notes text not null default '',
-  completed boolean not null default false,
+  status text not null default 'none' check (status in ('none', 'low', 'urgent', 'critical', 'done')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (user_id, week_start, day_index, row_index)
 );
+
+alter table public.tasks
+add column if not exists status text not null default 'none';
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'tasks'
+      and column_name = 'completed'
+  ) then
+    execute $sql$
+      update public.tasks
+      set status = 'done'
+      where status = 'none' and coalesce(completed, false) = true
+    $sql$;
+
+    execute 'alter table public.tasks drop column completed';
+  end if;
+end $$;
+
+alter table public.tasks
+drop constraint if exists tasks_status_check;
+
+alter table public.tasks
+add constraint tasks_status_check
+check (status in ('none', 'low', 'urgent', 'critical', 'done'));
 
 alter table public.tasks enable row level security;
 
