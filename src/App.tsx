@@ -50,6 +50,7 @@ type TaskRecord = {
 };
 
 const ROW_COUNT = 6;
+const MAX_ROW_COUNT = 16;
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const STORAGE_PREFIX = 'dnevnik-week';
 const MONTH_NAMES = [
@@ -113,6 +114,35 @@ function formatSheetRange(days: DayData[]) {
   const lastDate = new Date(`${lastDateParts.join('-')}T00:00:00`);
   const lastDay = String(lastDate.getDate());
   return `${month.toUpperCase()} ${firstDay}-${lastDay}`;
+}
+
+function formatTopBarRange(weekStart: Date) {
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 5);
+
+  const sameYear = weekStart.getFullYear() === weekEnd.getFullYear();
+  const sameMonth = sameYear && weekStart.getMonth() === weekEnd.getMonth();
+
+  if (sameMonth) {
+    return `${weekStart.toLocaleDateString('en-US', { month: 'long' })} ${weekStart.getDate()}-${weekEnd.getDate()}, ${weekEnd.getFullYear()}`;
+  }
+
+  if (sameYear) {
+    return `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })}`;
+  }
+
+  return `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - ${weekEnd.toLocaleDateString(
+    'en-US',
+    {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    },
+  )}`;
 }
 
 function getMonthCalendar(year: number, month: number): CalendarMonth {
@@ -317,6 +347,7 @@ function App() {
   );
   const activityMap = useMemo(() => buildActivityMap(savedWeeks), [savedWeeks]);
   const searchResults = useMemo(() => buildSearchResults(savedWeeks, searchQuery), [savedWeeks, searchQuery]);
+  const topBarRange = useMemo(() => formatTopBarRange(weekStart), [weekStart]);
 
   useEffect(() => {
     const raw = window.localStorage.getItem(STORAGE_PREFIX);
@@ -526,6 +557,11 @@ function App() {
     setSavedWeeks((current) => {
       const currentWeek = current[weekKey] ?? {};
       const currentRows = currentWeek[dayKey] ?? createEmptyRows(dayKey);
+
+      if (currentRows.length >= MAX_ROW_COUNT) {
+        return current;
+      }
+
       const nextRow = createEmptyRow(dayKey, currentRows.length);
       const nextState = {
         ...current,
@@ -759,73 +795,89 @@ function App() {
 
   return (
     <div className="app-shell">
-      <section className="storage-bar">
-        <div>
-          <p className="storage-label">{isSupabaseConfigured ? 'Cloud Mode' : 'Local Mode'}</p>
-          <p className="storage-copy">
-            {isSupabaseConfigured
-              ? `Connected as ${user?.email ?? user?.id ?? 'Unknown user'}`
-              : 'Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` to `.env.local` to enable cloud sync.'}
-          </p>
-        </div>
-
-        {isSupabaseConfigured && user ? (
-          <button type="button" className="nav-button" onClick={signOut}>
-            Sign out
-          </button>
-        ) : null}
-      </section>
-
       {authMessage ? <p className="status-banner">{authMessage}</p> : null}
       {storageError ? <p className="status-banner status-banner-error">{storageError}</p> : null}
       {isWeekLoading ? <p className="status-banner">Loading this week from Supabase...</p> : null}
 
       <header className="top-actions">
-        <div className="top-actions-group">
-          <button type="button" className="nav-button nav-button-inline nav-arrow" onClick={() => moveWeek(-1)} aria-label="Previous week">
-            ←
-          </button>
-          <div className="search-shell">
-            <input
-              className="search-input"
-              type="search"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search tasks and notes"
-              aria-label="Search tasks and notes"
-            />
-            {searchQuery.trim() ? (
-              <div className="search-results">
-                {searchResults.length > 0 ? (
-                  searchResults.map((result) => (
-                    <button
-                      key={`${result.rowId}-${result.weekKey}`}
-                      type="button"
-                      className="search-result"
-                      onClick={() => jumpToSearchResult(result)}
-                    >
-                      <span className="search-result-title">{result.title}</span>
-                      <span className="search-result-meta">
-                        {result.dayLabel} · {result.dateLabel}
-                      </span>
-                      {result.notesPreview ? <span className="search-result-preview">{result.notesPreview}</span> : null}
-                    </button>
-                  ))
-                ) : (
-                  <div className="search-empty">No matching tasks</div>
-                )}
-              </div>
-            ) : null}
+        <div className="top-toolbar">
+          <div className="top-toolbar-summary">
+            <p className="top-toolbar-label">Dnevnik</p>
+            <div>
+              <h2 className="top-toolbar-title">Weekly Planner</h2>
+              <p className="top-toolbar-range">{topBarRange}</p>
+            </div>
           </div>
-          <button type="button" className="nav-button" onClick={() => setIsCalendarOpen(true)}>
-            Calendar
-          </button>
-          <button type="button" className="nav-button nav-button-primary" onClick={resetToCurrentWeek}>
-            Today
-          </button>
-          <button type="button" className="nav-button nav-button-inline nav-arrow" onClick={() => moveWeek(1)} aria-label="Next week">
-            →
-          </button>
+
+          <div className="top-toolbar-controls">
+            <div className="top-toolbar-group" aria-label="Week navigation">
+              <button type="button" className="nav-button nav-button-inline nav-arrow" onClick={() => moveWeek(-1)} aria-label="Previous week">
+                ←
+              </button>
+              <button type="button" className="nav-button nav-button-primary" onClick={resetToCurrentWeek}>
+                Today
+              </button>
+              <button type="button" className="nav-button nav-button-inline nav-arrow" onClick={() => moveWeek(1)} aria-label="Next week">
+                →
+              </button>
+            </div>
+
+            <div className="search-shell">
+              <input
+                className="search-input"
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search tasks and notes"
+                aria-label="Search tasks and notes"
+              />
+              {searchQuery.trim() ? (
+                <div className="search-results">
+                  {searchResults.length > 0 ? (
+                    searchResults.map((result) => (
+                      <button
+                        key={`${result.rowId}-${result.weekKey}`}
+                        type="button"
+                        className="search-result"
+                        onClick={() => jumpToSearchResult(result)}
+                      >
+                        <span className="search-result-title">{result.title}</span>
+                        <span className="search-result-meta">
+                          {result.dayLabel} · {result.dateLabel}
+                        </span>
+                        {result.notesPreview ? <span className="search-result-preview">{result.notesPreview}</span> : null}
+                      </button>
+                    ))
+                  ) : (
+                    <div className="search-empty">No matching tasks</div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="top-toolbar-group" aria-label="Planner actions">
+              <button type="button" className="nav-button" onClick={() => setIsCalendarOpen(true)}>
+                Calendar
+              </button>
+            </div>
+
+            <div className="top-toolbar-account" aria-label="Storage and account">
+              <div>
+                <p className="top-toolbar-account-label">{isSupabaseConfigured ? 'Cloud Mode' : 'Local Mode'}</p>
+                <p className="top-toolbar-account-copy">
+                  {isSupabaseConfigured
+                    ? `Connected as ${user?.email ?? user?.id ?? 'Unknown user'}`
+                    : 'Add Supabase env vars to enable cloud sync.'}
+                </p>
+              </div>
+
+              {isSupabaseConfigured && user ? (
+                <button type="button" className="nav-button" onClick={signOut}>
+                  Sign out
+                </button>
+              ) : null}
+            </div>
+          </div>
         </div>
       </header>
 
@@ -1009,6 +1061,7 @@ type DaySectionProps = {
 
 function DaySection({ day, onUpdateRow, onAddRow, onDeleteRow, onOpenNotes, isActive, activeSearchRowId }: DaySectionProps) {
   const dayNumber = day.date.split(' ')[1];
+  const hasReachedRowLimit = day.rows.length >= MAX_ROW_COUNT;
 
   return (
     <section className="day-section">
@@ -1066,8 +1119,8 @@ function DaySection({ day, onUpdateRow, onAddRow, onDeleteRow, onOpenNotes, isAc
           </div>
         ))}
 
-        <button type="button" className="add-row-button" onClick={() => onAddRow(day.key)}>
-          + Add row
+        <button type="button" className="add-row-button" onClick={() => onAddRow(day.key)} disabled={hasReachedRowLimit}>
+          {hasReachedRowLimit ? `Row limit reached (${MAX_ROW_COUNT})` : '+ Add row'}
         </button>
       </div>
     </section>
