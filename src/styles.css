@@ -2211,6 +2211,48 @@ h1 {
     order: 1;
   }
 
+  .account-trigger {
+    width: 40px;
+    height: 40px;
+  }
+
+  .account-menu-panel {
+    position: fixed;
+    top: 72px;
+    left: 10px;
+    right: 10px;
+    width: auto;
+    max-height: calc(100vh - 92px);
+    overflow: auto;
+    padding: 10px;
+    border-radius: 18px;
+  }
+
+  .account-menu-header {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .account-menu-avatar {
+    width: 52px;
+    height: 52px;
+  }
+
+  .account-menu-section {
+    margin-top: 10px;
+    padding-top: 10px;
+  }
+
+  .account-menu-field {
+    padding: 12px;
+  }
+
+  .theme-select {
+    width: 100%;
+    min-width: 0;
+  }
+
   .misc-inbox-shell {
     margin-top: 12px;
   }
