@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 
+// A single planner row intentionally keeps both preset priority state and a free-form
+// detail slot. Built-in priorities live in `status`, while custom priority/detail text
+// currently reuses `time` so older Supabase schemas can still degrade gracefully.
 type TaskRow = {
   id: string;
   title: string;
@@ -307,6 +310,10 @@ const CALENDAR_WEEKDAY_LABELS = {
   ru: ['П', 'В', 'С', 'Ч', 'П', 'С', 'В'],
 } satisfies Record<LanguageCode, string[]>;
 
+// Notes are edited as HTML via `contentEditable`, so we explicitly whitelist the small
+// formatting subset the app supports before saving or rendering anything back to the DOM.
+const ALLOWED_NOTE_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'UL', 'OL', 'LI', 'P', 'DIV', 'BR', 'H3']);
+
 type UiText = (typeof UI_TEXT)[LanguageCode];
 
 function getDateLocale(language: LanguageCode) {
@@ -340,6 +347,45 @@ function getCustomDetailValue(row: TaskRow) {
   }
 
   return '';
+}
+
+function sanitizeNoteHtml(html: string) {
+  if (!html.trim()) {
+    return '';
+  }
+
+  const parser = new DOMParser();
+  const documentNode = parser.parseFromString(html, 'text/html');
+
+  function sanitizeNode(node: Node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return;
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      node.parentNode?.removeChild(node);
+      return;
+    }
+
+    const element = node as HTMLElement;
+    Array.from(element.childNodes).forEach(sanitizeNode);
+
+    if (!ALLOWED_NOTE_TAGS.has(element.tagName)) {
+      const fragment = documentNode.createDocumentFragment();
+      while (element.firstChild) {
+        fragment.appendChild(element.firstChild);
+      }
+      element.replaceWith(fragment);
+      return;
+    }
+
+    Array.from(element.attributes).forEach((attribute) => {
+      element.removeAttribute(attribute.name);
+    });
+  }
+
+  Array.from(documentNode.body.childNodes).forEach(sanitizeNode);
+  return documentNode.body.innerHTML;
 }
 
 function normalizeDetailColor(value: unknown): DetailColor {
@@ -405,6 +451,8 @@ function normalizeStatus(value: unknown, completed?: unknown): RowStatus {
 }
 
 function normalizeTaskRow(row: Partial<TaskRow> & { completed?: boolean }, dayKey: string, index: number): TaskRow {
+  // Browser storage and Supabase can be on different schema versions, so every row is
+  // normalized into the current in-memory shape before the UI touches it.
   return {
     id: typeof row.id === 'string' ? row.id : `${dayKey}-${index}`,
     title: typeof row.title === 'string' ? row.title : '',
@@ -660,6 +708,42 @@ function mapRecordsToWeek(weekStart: Date, records: TaskRecord[]) {
   return mapped;
 }
 
+function mergeLegacyDetailFields(
+  nextWeek: Record<string, TaskRow[]>,
+  currentWeek: Record<string, TaskRow[]> | undefined,
+  preserveDetailFields: boolean,
+) {
+  // If the remote database is still on an older schema, a fresh cloud read can come back
+  // without custom detail text/color. Preserve the richer local values until the schema
+  // migration has caught up instead of silently wiping them.
+  if (!preserveDetailFields || !currentWeek) {
+    return nextWeek;
+  }
+
+  const merged: Record<string, TaskRow[]> = {};
+
+  for (const [dayKey, rows] of Object.entries(nextWeek)) {
+    const currentRows = currentWeek[dayKey] ?? [];
+
+    merged[dayKey] = rows.map((row) => {
+      const currentRow = currentRows.find((candidate) => candidate.id === row.id);
+
+      if (!currentRow) {
+        return row;
+      }
+
+      return {
+        ...row,
+        time: currentRow.time,
+        detailColor: currentRow.detailColor,
+        priorityDismissed: currentRow.priorityDismissed,
+      };
+    });
+  }
+
+  return merged;
+}
+
 function hasAnyTaskContent(week: Record<string, TaskRow[]> | undefined) {
   if (!week) {
     return false;
@@ -790,6 +874,7 @@ function isPresetStatus(status: RowStatus) {
 const DETAIL_COLORS: DetailColor[] = ['default', 'blue', 'green', 'amber', 'pink', 'violet'];
 
 const PRESET_PRIORITY_OPTIONS = ['none', 'low', 'urgent', 'critical', 'done'] as const;
+const CUSTOM_PRIORITY_MAX_LENGTH = 24;
 
 function App() {
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()));
@@ -858,6 +943,8 @@ function App() {
   const miscTasks = miscTasksByWeek[weekKey] ?? [];
 
   useEffect(() => {
+    // Hydrate all local-only state first so the app is usable immediately, even before
+    // Supabase auth or cloud reads have finished.
     const raw = window.localStorage.getItem(STORAGE_PREFIX);
     if (raw) {
       try {
@@ -937,6 +1024,8 @@ function App() {
       }
 
       async function selectWithLegacyFallback(primaryColumns: string, fallbackColumns: string) {
+        // The live project may still be on an older schema during beta. Try the newest
+        // column set first, then progressively fall back without breaking the planner.
         let result = await selectTasks(primaryColumns);
 
         if (result.error?.message.includes('column tasks.detail_color does not exist')) {
@@ -1045,7 +1134,11 @@ function App() {
           ...current,
           [weekKey]:
             (data ?? []).length > 0 || !hasAnyTaskContent(current[weekKey])
-              ? mapRecordsToWeek(weekStart, data ?? [])
+              ? mergeLegacyDetailFields(
+                  mapRecordsToWeek(weekStart, data ?? []),
+                  current[weekKey],
+                  usesLegacyTimeColumn || usesLegacyDetailColorColumn,
+                )
               : current[weekKey],
         }));
       }
@@ -1184,6 +1277,7 @@ function App() {
       return;
     }
 
+    // Empty rows are deleted remotely so the database only stores meaningful content.
     if (isRowEmpty(row)) {
       const { error } = await supabase
         .from('tasks')
@@ -1261,6 +1355,7 @@ function App() {
       return;
     }
 
+    // Row reordering is simplest to sync by rewriting the day slice in row-index order.
     const populatedRows = rows
       .map((row, rowIndex) => ({
         user_id: activeUser.id,
@@ -1368,6 +1463,8 @@ function App() {
         return current;
       }
 
+      // Apply multiple field changes atomically so one UI action cannot overwrite
+      // itself with stale row snapshots.
       updatedRow = {
         ...existingRow,
         ...fields,
@@ -1398,7 +1495,7 @@ function App() {
       dayKey,
       rowId: row.id,
       taskTitle: row.title,
-      notes: row.notes,
+      notes: sanitizeNoteHtml(row.notes),
     });
   }
 
@@ -1424,9 +1521,10 @@ function App() {
   }
 
   function updateActiveNotes(notes: string) {
-    setActiveNotesEditor((current) => (current ? { ...current, notes } : current));
+    const sanitizedNotes = sanitizeNoteHtml(notes);
+    setActiveNotesEditor((current) => (current ? { ...current, notes: sanitizedNotes } : current));
     if (activeNotesEditor) {
-      updateRow(activeNotesEditor.dayKey, activeNotesEditor.rowId, 'notes', notes);
+      updateRow(activeNotesEditor.dayKey, activeNotesEditor.rowId, 'notes', sanitizedNotes);
     }
   }
 
@@ -1442,7 +1540,7 @@ function App() {
       return;
     }
 
-    const trimmed = status.trim();
+    const trimmed = status.trim().slice(0, CUSTOM_PRIORITY_MAX_LENGTH);
     if (!trimmed) {
       return;
     }
@@ -1461,6 +1559,8 @@ function App() {
       return;
     }
 
+    // Explicitly choosing `none` is different from "priority has never been set":
+    // it hides the inline prompt until the user hovers the cell again.
     updateRowFields(activePriorityPicker.dayKey, activePriorityPicker.rowId, {
       time: '',
       status: option,
@@ -1555,10 +1655,13 @@ function App() {
     let nextTargetRows = targetRows;
 
     if (sourceDayKey === targetDayKey) {
+      // Same-day drag keeps the row content intact and only changes visual order.
       const [movedRow] = nextSourceRows.splice(sourceIndex, 1);
       nextSourceRows.splice(targetIndex, 0, movedRow);
       nextSourceRows = reindexRows(sourceDayKey, nextSourceRows);
     } else {
+      // Cross-day drag swaps with the target row, unless the target is empty, in which
+      // case the source row is moved and its old slot becomes a fresh empty row.
       const sourceRow = sourceRows[sourceIndex];
       const targetRow = targetRows[targetIndex];
 
@@ -2436,10 +2539,7 @@ function DaySection({
               className={`notes-trigger ${row.notes ? 'has-notes' : ''}`}
               onClick={() => onOpenNotes(day.key, row)}
             >
-              <span
-                className="notes-preview"
-                dangerouslySetInnerHTML={{ __html: getNotePreview(row.notes) }}
-              />
+              <span className="notes-preview">{getNotePreview(row.notes)}</span>
             </button>
             <div className="status-cell">
               {row.title.trim() ? (
@@ -2560,8 +2660,9 @@ function CustomStatusDialog({ activeStatusEditor, ui, onClose, onSave }: CustomS
         <input
           className="meta-dialog-input"
           value={value}
-          onChange={(event) => setValue(event.target.value)}
+          onChange={(event) => setValue(event.target.value.slice(0, CUSTOM_PRIORITY_MAX_LENGTH))}
           placeholder={ui.customStatusPlaceholder}
+          maxLength={CUSTOM_PRIORITY_MAX_LENGTH}
           autoFocus
         />
 
@@ -2692,8 +2793,9 @@ function NotesDialog({ activeNotesEditor, ui, onClose, onChangeTaskTitle, onChan
   });
 
   useEffect(() => {
-    if (editorRef.current && editorRef.current.innerHTML !== activeNotesEditor.notes) {
-      editorRef.current.innerHTML = activeNotesEditor.notes;
+    const sanitizedNotes = sanitizeNoteHtml(activeNotesEditor.notes);
+    if (editorRef.current && editorRef.current.innerHTML !== sanitizedNotes) {
+      editorRef.current.innerHTML = sanitizedNotes;
     }
   }, [activeNotesEditor]);
 
@@ -2763,7 +2865,11 @@ function NotesDialog({ activeNotesEditor, ui, onClose, onChangeTaskTitle, onChan
   function exec(command: string, value?: string) {
     document.execCommand(command, false, value);
     if (editorRef.current) {
-      onChangeNotes(editorRef.current.innerHTML);
+      const sanitizedNotes = sanitizeNoteHtml(editorRef.current.innerHTML);
+      if (editorRef.current.innerHTML !== sanitizedNotes) {
+        editorRef.current.innerHTML = sanitizedNotes;
+      }
+      onChangeNotes(sanitizedNotes);
       editorRef.current.focus();
     }
   }
@@ -2798,7 +2904,13 @@ function NotesDialog({ activeNotesEditor, ui, onClose, onChangeTaskTitle, onChan
           className="notes-editor"
           contentEditable
           suppressContentEditableWarning
-          onInput={(event) => onChangeNotes(event.currentTarget.innerHTML)}
+          onInput={(event) => {
+            const sanitizedNotes = sanitizeNoteHtml(event.currentTarget.innerHTML);
+            if (event.currentTarget.innerHTML !== sanitizedNotes) {
+              event.currentTarget.innerHTML = sanitizedNotes;
+            }
+            onChangeNotes(sanitizedNotes);
+          }}
         />
 
         <div className="notes-dialog-footer">

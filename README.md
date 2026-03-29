@@ -159,6 +159,7 @@ npm run preview
 - `src/styles.css` - planner layout, themes, dialogs, calendar styling, and overall visual system
 - `src/lib/supabase.ts` - Supabase client setup
 - `supabase-schema.sql` - database schema and RLS policies
+- `docs/ARCHITECTURE.md` - implementation notes, state flow, persistence model, and refactor guidance
 
 ## Product Direction
 

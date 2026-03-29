@@ -115,18 +115,26 @@
   --activity-4-ink: #123812;
   --disabled: #b6b6b6;
   --disabled-soft: #c3c3c3;
+  --status-low-bg: #bdd9ff;
+  --status-low-ink: #0d4a93;
+  --status-urgent-bg: #ffe4a8;
+  --status-urgent-ink: #7a4700;
+  --status-critical-bg: #ffc7c7;
+  --status-critical-ink: #9a1515;
+  --status-done-bg: #bfe7c6;
+  --status-done-ink: #14572a;
   --detail-default-bg: #f7f7f7;
   --detail-default-ink: #4f4f4f;
-  --detail-blue-bg: #edf4ff;
-  --detail-blue-ink: #274f84;
-  --detail-green-bg: #e9f5ea;
-  --detail-green-ink: #28583a;
-  --detail-amber-bg: #fff4de;
-  --detail-amber-ink: #815510;
-  --detail-pink-bg: #ffeaf0;
-  --detail-pink-ink: #8f3456;
-  --detail-violet-bg: #f3ebff;
-  --detail-violet-ink: #6845a0;
+  --detail-blue-bg: #bdd9ff;
+  --detail-blue-ink: #0d4a93;
+  --detail-green-bg: #c5e9cc;
+  --detail-green-ink: #185f30;
+  --detail-amber-bg: #ffe7b6;
+  --detail-amber-ink: #8a5200;
+  --detail-pink-bg: #ffd7e3;
+  --detail-pink-ink: #9c2f5a;
+  --detail-violet-bg: #e8dcff;
+  --detail-violet-ink: #623aa8;
 }
 
 :root[data-theme='night'] {
