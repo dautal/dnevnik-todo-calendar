@@ -533,6 +533,31 @@ h1 {
   flex: 1 1 auto;
 }
 
+.save-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line-subtle);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.save-indicator-saving {
+  border-color: var(--button-outline);
+  color: var(--ink);
+}
+
+.save-indicator-saved {
+  border-color: var(--line-subtle);
+  color: var(--muted);
+}
+
 .top-toolbar-controls {
   justify-content: flex-start;
   gap: 10px;

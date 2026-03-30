@@ -127,6 +127,8 @@ const UI_TEXT = {
     signedInUser: 'Signed in user',
     weeklyPlanner: 'Weekly Planner',
     loadingWeek: 'Loading this week from Supabase...',
+    savingStatus: 'Saving...',
+    savedStatus: 'Saved',
     previousWeek: 'Previous week',
     nextWeek: 'Next week',
     today: 'Home',
@@ -220,6 +222,8 @@ const UI_TEXT = {
     signedInUser: 'Пользователь',
     weeklyPlanner: 'Еженедельник',
     loadingWeek: 'Загрузка недели из Supabase...',
+    savingStatus: 'Сохранение...',
+    savedStatus: 'Сохранено',
     previousWeek: 'Предыдущая неделя',
     nextWeek: 'Следующая неделя',
     today: 'Домой',
@@ -671,10 +675,6 @@ function getDayIndex(dayKey: string) {
   return DAY_NAMES.findIndex((day) => day.toLowerCase() === weekday);
 }
 
-function getRowIndex(rowId: string) {
-  return Number(rowId.slice(rowId.lastIndexOf('-') + 1));
-}
-
 function isRowEmpty(row: TaskRow) {
   return row.title.trim() === '' && row.notes.trim() === '' && row.status === 'none' && row.time.trim() === '';
 }
@@ -930,6 +930,7 @@ function App() {
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [isWeekLoading, setIsWeekLoading] = useState(false);
   const [showWeekLoadingBanner, setShowWeekLoadingBanner] = useState(false);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [storageError, setStorageError] = useState('');
   const [usesLegacyCompletedColumn, setUsesLegacyCompletedColumn] = useState(false);
   const [usesLegacyTimeColumn, setUsesLegacyTimeColumn] = useState(false);
@@ -944,6 +945,9 @@ function App() {
   const [plannerTitleOverride, setPlannerTitleOverride] = useState('');
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const previousWeekStartRef = useRef(weekStart);
+  const queuedDaySyncsRef = useRef<Record<string, TaskRow[]>>({});
+  const activeDaySyncsRef = useRef<Record<string, boolean>>({});
+  const saveStateTimeoutRef = useRef<number | null>(null);
   const ui = UI_TEXT[language];
   const allowedEmails = useMemo(() => parseAllowedEmails(import.meta.env.VITE_ALLOWED_EMAILS), []);
   const isInviteOnlyBeta = allowedEmails.size > 0;
@@ -960,6 +964,28 @@ function App() {
   const defaultPlannerTitle = useMemo(() => getPlannerTitle(user, language), [user, language]);
   const plannerTitle = plannerTitleOverride || defaultPlannerTitle;
   const miscTasks = miscTasksByWeek[weekKey] ?? [];
+
+  function clearSaveStateTimeout() {
+    if (saveStateTimeoutRef.current !== null) {
+      window.clearTimeout(saveStateTimeoutRef.current);
+      saveStateTimeoutRef.current = null;
+    }
+  }
+
+  function markSavingState() {
+    clearSaveStateTimeout();
+    setSaveState('saving');
+  }
+
+  function markSavedState() {
+    clearSaveStateTimeout();
+    setSaveState('saved');
+    saveStateTimeoutRef.current = window.setTimeout(() => setSaveState('idle'), 1600);
+  }
+
+  function hasPendingDaySyncs() {
+    return Object.keys(queuedDaySyncsRef.current).length > 0 || Object.values(activeDaySyncsRef.current).some(Boolean);
+  }
 
   async function enforceInviteOnly(nextUser: User | null) {
     if (isAllowedBetaUser(nextUser, allowedEmails)) {
@@ -1263,6 +1289,10 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    return () => clearSaveStateTimeout();
+  }, []);
+
   const days = useMemo(() => {
     return buildDays(weekStart, savedWeeks[weekKey] ?? {}, language);
   }, [savedWeeks, weekKey, weekStart, language]);
@@ -1306,79 +1336,14 @@ function App() {
     return () => window.clearTimeout(timeout);
   }, [weekKey, weekStart]);
 
-  async function persistRow(dayKey: string, row: TaskRow) {
-    if (!supabase || !user) {
-      return;
-    }
-
-    const dayIndex = getDayIndex(dayKey);
-    const rowIndex = getRowIndex(row.id);
-
-    if (dayIndex < 0 || Number.isNaN(rowIndex)) {
-      return;
-    }
-
-    // Empty rows are deleted remotely so the database only stores meaningful content.
-    if (isRowEmpty(row)) {
-      const { error } = await supabase
-        .from('tasks')
-        .delete()
-        .eq('user_id', user.id)
-        .eq('week_start', weekKey)
-        .eq('day_index', dayIndex)
-        .eq('row_index', rowIndex);
-
-      if (error) {
-        setStorageError(error.message);
-      }
-
-      return;
-    }
-
-    const payload = {
-      user_id: user.id,
-      week_start: weekKey,
-      day_index: dayIndex,
-      row_index: rowIndex,
-      title: row.title,
-      notes: row.notes,
-      ...(usesLegacyTimeColumn ? {} : { task_time: row.time }),
-      ...(usesLegacyDetailColorColumn ? {} : { detail_color: row.detailColor }),
-    };
-
-    const { error } = usesLegacyCompletedColumn
-      ? await supabase.from('tasks').upsert(
-          {
-            ...payload,
-            completed: row.status === 'done',
-          },
-          {
-            onConflict: 'user_id,week_start,day_index,row_index',
-          },
-        )
-      : await supabase.from('tasks').upsert(
-          {
-            ...payload,
-            status: row.status,
-          },
-          {
-            onConflict: 'user_id,week_start,day_index,row_index',
-          },
-        );
-
-    if (error) {
-      setStorageError(error.message);
-    }
-  }
-
   async function syncDayRows(dayKey: string, rows: TaskRow[]) {
     if (!supabase || !user) {
-      return;
+      return false;
     }
 
     const dayIndex = getDayIndex(dayKey);
     if (dayIndex < 0) {
-      return;
+      return false;
     }
 
     const client = supabase;
@@ -1393,7 +1358,7 @@ function App() {
 
     if (deleteError) {
       setStorageError(deleteError.message);
-      return;
+      return false;
     }
 
     // Row reordering is simplest to sync by rewriting the day slice in row-index order.
@@ -1420,14 +1385,57 @@ function App() {
       );
 
     if (populatedRows.length === 0) {
-      return;
+      setStorageError('');
+      return true;
     }
 
     const { error: insertError } = await client.from('tasks').insert(populatedRows);
 
     if (insertError) {
       setStorageError(insertError.message);
+      return false;
     }
+
+    setStorageError('');
+    return true;
+  }
+
+  async function flushDaySync(dayKey: string) {
+    if (activeDaySyncsRef.current[dayKey]) {
+      return;
+    }
+
+    const rows = queuedDaySyncsRef.current[dayKey];
+
+    if (!rows) {
+      return;
+    }
+
+    delete queuedDaySyncsRef.current[dayKey];
+    activeDaySyncsRef.current[dayKey] = true;
+
+    const didSave = await syncDayRows(dayKey, rows);
+
+    activeDaySyncsRef.current[dayKey] = false;
+
+    if (queuedDaySyncsRef.current[dayKey]) {
+      void flushDaySync(dayKey);
+      return;
+    }
+
+    if (didSave && !hasPendingDaySyncs()) {
+      markSavedState();
+    }
+  }
+
+  function queueDaySync(dayKey: string, rows: TaskRow[]) {
+    if (!supabase || !user) {
+      return;
+    }
+
+    queuedDaySyncsRef.current[dayKey] = rows.map((row) => ({ ...row }));
+    markSavingState();
+    void flushDaySync(dayKey);
   }
 
   function addRow(dayKey: string) {
@@ -1484,7 +1492,7 @@ function App() {
     });
 
     if (supabase && user) {
-      void syncDayRows(dayKey, remainingRows);
+      queueDaySync(dayKey, remainingRows);
     }
   }
 
@@ -1493,6 +1501,7 @@ function App() {
   }
 
   function updateRowFields(dayKey: string, rowId: string, fields: Partial<TaskRow>) {
+    let nextRowsSnapshot: TaskRow[] | null = null;
     let updatedRow: TaskRow | null = null;
 
     setSavedWeeks((current) => {
@@ -1512,6 +1521,7 @@ function App() {
       };
 
       const nextRows = currentRowsState.map((row) => (row.id === rowId ? (updatedRow as TaskRow) : row));
+      nextRowsSnapshot = nextRows;
 
       const nextState = {
         ...current,
@@ -1526,8 +1536,8 @@ function App() {
       return nextState;
     });
 
-    if (supabase && user && updatedRow) {
-      void persistRow(dayKey, updatedRow);
+    if (supabase && user && nextRowsSnapshot) {
+      queueDaySync(dayKey, nextRowsSnapshot);
     }
   }
 
@@ -1749,9 +1759,9 @@ function App() {
     });
 
     if (supabase && user) {
-      void syncDayRows(sourceDayKey, nextSourceRows);
+      queueDaySync(sourceDayKey, nextSourceRows);
       if (sourceDayKey !== targetDayKey) {
-        void syncDayRows(targetDayKey, nextTargetRows);
+        queueDaySync(targetDayKey, nextTargetRows);
       }
     }
 
@@ -1886,6 +1896,12 @@ function App() {
           </div>
 
           <div className="top-toolbar-summary">
+            {isSupabaseConfigured && user && saveState !== 'idle' ? (
+              <span className={`save-indicator save-indicator-${saveState}`}>
+                {saveState === 'saving' ? ui.savingStatus : ui.savedStatus}
+              </span>
+            ) : null}
+
             <button type="button" className="nav-button" onClick={() => setIsCalendarOpen(true)}>
               {ui.calendar}
             </button>
