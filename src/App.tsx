@@ -166,6 +166,7 @@ const UI_TEXT = {
     signedInAs: (email: string) => `Signed in as ${email}.`,
     accountCreated: (email: string) => `Account created for ${email}. Check your email if confirmation is required.`,
     task: 'Task',
+    taskEnterHint: 'Open notes with Enter',
     notes: 'Notes',
     status: 'Status',
     done: 'Done',
@@ -209,7 +210,7 @@ const UI_TEXT = {
     nextYear: 'Next year',
     close: 'Close',
     miscTasksTitle: 'Miscellaneous tasks',
-    miscTasksPlaceholder: 'Miscellaneous tasks. Drag them into a day later.',
+    miscTasksPlaceholder: 'Unassigned tasks, drag them later',
     miscTasksSend: 'Add task',
     miscTasksEmpty: 'Misc tasks you add here will wait below until you assign them.',
     deleteMiscTask: 'Delete misc task',
@@ -258,6 +259,7 @@ const UI_TEXT = {
     signedInAs: (email: string) => `Вы вошли как ${email}.`,
     accountCreated: (email: string) => `Аккаунт для ${email} создан. Проверьте почту, если требуется подтверждение.`,
     task: 'Задача',
+    taskEnterHint: 'Открыть заметки через Enter',
     notes: 'Заметки',
     status: 'Статус',
     done: 'Сделано',
@@ -301,7 +303,7 @@ const UI_TEXT = {
     nextYear: 'Следующий год',
     close: 'Закрыть',
     miscTasksTitle: 'Разные задачи',
-    miscTasksPlaceholder: 'Разные задачи. Потом перетащите их в нужный день.',
+    miscTasksPlaceholder: 'Неназначенные задачи, перетащите их позже',
     miscTasksSend: 'Добавить задачу',
     miscTasksEmpty: 'Задачи, которые вы добавите сюда, будут ждать внизу, пока вы их не распределите.',
     deleteMiscTask: 'Удалить задачу',
@@ -593,18 +595,6 @@ function getPlannerTitle(user: User | null, language: LanguageCode) {
   return `${normalizedName}${suffix} ${UI_TEXT[language].weeklyPlanner}`;
 }
 
-function getUserAvatarUrl(user: User | null) {
-  if (!user) {
-    return '';
-  }
-
-  const avatarUrl =
-    (typeof user.user_metadata?.avatar_url === 'string' && user.user_metadata.avatar_url) ||
-    (typeof user.user_metadata?.picture === 'string' && user.user_metadata.picture);
-
-  return avatarUrl || '';
-}
-
 function getUserInitials(user: User | null) {
   const label = getUserDisplayName(user);
   const parts = label
@@ -750,16 +740,6 @@ function mergeLegacyDetailFields(
   }
 
   return merged;
-}
-
-function hasAnyTaskContent(week: Record<string, TaskRow[]> | undefined) {
-  if (!week) {
-    return false;
-  }
-
-  return Object.values(week).some((rows) =>
-    rows.some((row) => row.title.trim() !== '' || row.notes.trim() !== '' || row.status !== 'none' || row.time.trim() !== ''),
-  );
 }
 
 function buildActivityMap(savedWeeks: Record<string, Record<string, TaskRow[]>>) {
@@ -969,7 +949,6 @@ function App() {
   const searchResults = useMemo(() => buildSearchResults(savedWeeks, searchQuery, language), [savedWeeks, searchQuery, language]);
   const topBarRange = useMemo(() => formatTopBarRange(weekStart, language), [weekStart, language]);
   const userDisplayName = useMemo(() => getUserDisplayName(user), [user]);
-  const userAvatarUrl = useMemo(() => getUserAvatarUrl(user), [user]);
   const userInitials = useMemo(() => getUserInitials(user), [user]);
   const defaultPlannerTitle = useMemo(() => getPlannerTitle(user, language), [user, language]);
   const plannerTitle = plannerTitleOverride || defaultPlannerTitle;
@@ -1190,14 +1169,11 @@ function App() {
       } else {
         setSavedWeeks((current) => ({
           ...current,
-          [weekKey]:
-            (data ?? []).length > 0 || !hasAnyTaskContent(current[weekKey])
-              ? mergeLegacyDetailFields(
-                  mapRecordsToWeek(weekStart, data ?? []),
-                  current[weekKey],
-                  usesLegacyTimeColumn || usesLegacyDetailColorColumn,
-                )
-              : current[weekKey],
+          [weekKey]: mergeLegacyDetailFields(
+            mapRecordsToWeek(weekStart, data ?? []),
+            current[weekKey],
+            usesLegacyTimeColumn || usesLegacyDetailColorColumn,
+          ),
         }));
       }
 
@@ -1948,22 +1924,14 @@ function App() {
                 aria-label={ui.openAccount}
                 aria-expanded={isAccountMenuOpen}
               >
-                {userAvatarUrl ? (
-                  <img className="account-trigger-image" src={userAvatarUrl} alt={userDisplayName} />
-                ) : (
-                  <span>{userInitials}</span>
-                )}
+                <span>{userInitials}</span>
               </button>
 
               {isAccountMenuOpen ? (
                 <div className="account-menu-panel" role="menu" aria-label={ui.accountSettings}>
                   <div className="account-menu-header">
                     <div className="account-menu-avatar">
-                      {userAvatarUrl ? (
-                        <img className="account-trigger-image" src={userAvatarUrl} alt={userDisplayName} />
-                      ) : (
-                        <span>{userInitials}</span>
-                      )}
+                      <span>{userInitials}</span>
                     </div>
                     <div>
                       <p className="account-menu-label">{isSupabaseConfigured ? ui.cloudMode : ui.localMode}</p>
@@ -2546,7 +2514,7 @@ function DaySection({
                 </span>
               ) : null}
             </div>
-            <div className="task-cell">
+            <div className={`task-cell ${row.title.trim() ? 'has-title' : ''}`}>
               <input
                 className={`cell-input ${row.status === 'done' ? 'is-complete' : ''}`}
                 value={row.title}
@@ -2554,10 +2522,27 @@ function DaySection({
                   const nextTitle = event.target.value;
                   const wasEmpty = row.title.trim() === '';
                   const isNowFilled = nextTitle.trim() !== '';
+                  const isNowCleared = nextTitle.trim() === '';
 
                   if (wasEmpty && isNowFilled) {
                     onUpdateRowFields(day.key, row.id, {
                       title: nextTitle,
+                      notes: '',
+                      status: 'none',
+                      time: '',
+                      detailColor: 'default',
+                      priorityDismissed: false,
+                    });
+                    return;
+                  }
+
+                  if (isNowCleared) {
+                    onUpdateRowFields(day.key, row.id, {
+                      title: nextTitle,
+                      notes: '',
+                      status: 'none',
+                      time: '',
+                      detailColor: 'default',
                       priorityDismissed: false,
                     });
                     return;
@@ -2572,6 +2557,9 @@ function DaySection({
                   }
                 }}
               />
+              <span className="task-enter-hint" aria-hidden="true">
+                {ui.taskEnterHint}
+              </span>
               <button type="button" className="mobile-notes-trigger" onClick={() => onOpenNotes(day.key, row)}>
                 {row.notes.trim() ? ui.notes : `+ ${ui.notes}`}
               </button>

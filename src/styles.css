@@ -99,8 +99,8 @@
   --input-focus-bg: #ffffff;
   --hover: #f5f5f5;
   --hover-soft: #fafafa;
-  --today-bg: #eaf2ff;
-  --today-ink: #2d4d79;
+  --today-bg: #cfe3ff;
+  --today-ink: #173f7a;
   --search-hit: #f4f8ff;
   --dialog-backdrop: rgba(255, 255, 255, 0.76);
   --outside-month: #b8b8b8;
@@ -1430,6 +1430,29 @@ h1 {
   align-items: center;
   min-width: 0;
   height: 100%;
+  position: relative;
+}
+
+.task-enter-hint {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+  white-space: nowrap;
+}
+
+.task-cell:focus-within .task-enter-hint {
+  opacity: 1;
+}
+
+.task-cell:not(.has-title) .task-enter-hint {
+  opacity: 0;
 }
 
 .mobile-notes-trigger {
