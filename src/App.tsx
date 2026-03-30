@@ -201,6 +201,7 @@ const UI_TEXT = {
     addRow: '+ Add row',
     rowLimitReached: (limit: number) => `Row limit reached (${limit})`,
     taskNotes: 'Task Notes',
+    notesShortcutHint: 'Save and close with Cmd/Ctrl+Enter',
     untitledTask: 'Untitled task',
     body: 'Body',
     large: 'Large',
@@ -292,6 +293,7 @@ const UI_TEXT = {
     addRow: '+ Добавить строку',
     rowLimitReached: (limit: number) => `Достигнут лимит строк (${limit})`,
     taskNotes: 'Заметки к задаче',
+    notesShortcutHint: 'Сохранить и закрыть: Cmd/Ctrl+Enter',
     untitledTask: 'Без названия',
     body: 'Обычный',
     large: 'Крупный',
@@ -2563,6 +2565,12 @@ function DaySection({
 
                   onUpdateRow(day.key, row.id, 'title', nextTitle);
                 }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    onOpenNotes(day.key, row);
+                  }
+                }}
               />
               <button type="button" className="mobile-notes-trigger" onClick={() => onOpenNotes(day.key, row)}>
                 {row.notes.trim() ? ui.notes : `+ ${ui.notes}`}
@@ -2985,6 +2993,7 @@ function NotesDialog({ activeNotesEditor, ui, onClose, onChangeTaskTitle, onChan
               {ui.large}
             </button>
           </div>
+          <p className="notes-dialog-hint">{ui.notesShortcutHint}</p>
           <button type="button" className="nav-button" onClick={onClose}>
             {ui.done}
           </button>
