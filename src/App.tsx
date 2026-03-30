@@ -1293,6 +1293,20 @@ function App() {
     return () => clearSaveStateTimeout();
   }, []);
 
+  useEffect(() => {
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      if (saveState !== 'saving') {
+        return;
+      }
+
+      event.preventDefault();
+      event.returnValue = '';
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [saveState]);
+
   const days = useMemo(() => {
     return buildDays(weekStart, savedWeeks[weekKey] ?? {}, language);
   }, [savedWeeks, weekKey, weekStart, language]);
