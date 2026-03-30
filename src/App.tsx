@@ -517,8 +517,15 @@ function getMonday(date: Date) {
   return next;
 }
 
+function formatDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function formatWeekKey(monday: Date) {
-  return monday.toISOString().slice(0, 10);
+  return formatDateKey(monday);
 }
 
 function parseWeekKey(weekKey: string) {
@@ -644,7 +651,7 @@ function buildDays(monday: Date, saved: Record<string, TaskRow[]>, language: Lan
   return DAY_NAMES.map((label, index) => {
     const date = new Date(monday);
     date.setDate(monday.getDate() + index);
-    const key = `${label.toLowerCase()}-${date.toISOString().slice(0, 10)}`;
+    const key = `${label.toLowerCase()}-${formatDateKey(date)}`;
     const rows = saved[key] ?? createEmptyRows(key);
 
     return {
@@ -679,14 +686,14 @@ function mapRecordsToWeek(weekStart: Date, records: TaskRecord[]) {
     const dayIndex = DAY_NAMES.indexOf(dayLabel);
     const date = new Date(weekStart);
     date.setDate(weekStart.getDate() + dayIndex);
-    const dayKey = `${dayLabel.toLowerCase()}-${date.toISOString().slice(0, 10)}`;
+    const dayKey = `${dayLabel.toLowerCase()}-${formatDateKey(date)}`;
     mapped[dayKey] = createEmptyRows(dayKey);
   }
 
   for (const record of records) {
     const date = new Date(weekStart);
     date.setDate(weekStart.getDate() + record.day_index);
-    const dayKey = `${DAY_NAMES[record.day_index].toLowerCase()}-${date.toISOString().slice(0, 10)}`;
+    const dayKey = `${DAY_NAMES[record.day_index].toLowerCase()}-${formatDateKey(date)}`;
 
     if (!mapped[dayKey]) {
       mapped[dayKey] = createEmptyRows(dayKey);
@@ -3045,10 +3052,7 @@ function CalendarNavigator({
                   const weekKey = formatWeekKey(getMonday(week[0]));
                   const isSelected = weekKey === selectedWeekKey;
                   const isCurrent = weekKey === todayKey;
-                  const weekActivity = week.reduce(
-                    (total, day) => total + (activityMap.get(day.toISOString().slice(0, 10)) ?? 0),
-                    0,
-                  );
+                  const weekActivity = week.reduce((total, day) => total + (activityMap.get(formatDateKey(day)) ?? 0), 0);
 
                   return (
                     <button
@@ -3060,14 +3064,14 @@ function CalendarNavigator({
                       onClick={() => onPickWeek(week[0])}
                     >
                       {week.map((day) => {
-                        const dateKey = day.toISOString().slice(0, 10);
+                        const dateKey = formatDateKey(day);
                         const activity = activityMap.get(dateKey) ?? 0;
                         const intensity =
                           activity >= 6 ? 'activity-4' : activity >= 4 ? 'activity-3' : activity >= 2 ? 'activity-2' : activity >= 1 ? 'activity-1' : '';
 
                         return (
                           <span
-                            key={day.toISOString()}
+                            key={dateKey}
                             className={`${day.getMonth() === month.monthIndex ? '' : 'is-outside-month'} ${intensity}`.trim()}
                           >
                             {day.getDate()}
