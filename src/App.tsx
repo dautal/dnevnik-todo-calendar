@@ -948,6 +948,7 @@ function App() {
   const queuedDaySyncsRef = useRef<Record<string, TaskRow[]>>({});
   const activeDaySyncsRef = useRef<Record<string, boolean>>({});
   const saveStateTimeoutRef = useRef<number | null>(null);
+  const weekMutationVersionRef = useRef<Record<string, number>>({});
   const ui = UI_TEXT[language];
   const allowedEmails = useMemo(() => parseAllowedEmails(import.meta.env.VITE_ALLOWED_EMAILS), []);
   const isInviteOnlyBeta = allowedEmails.size > 0;
@@ -985,6 +986,10 @@ function App() {
 
   function hasPendingDaySyncs() {
     return Object.keys(queuedDaySyncsRef.current).length > 0 || Object.values(activeDaySyncsRef.current).some(Boolean);
+  }
+
+  function markWeekMutated(targetWeekKey: string) {
+    weekMutationVersionRef.current[targetWeekKey] = (weekMutationVersionRef.current[targetWeekKey] ?? 0) + 1;
   }
 
   async function enforceInviteOnly(nextUser: User | null) {
@@ -1080,6 +1085,7 @@ function App() {
     async function loadWeek() {
       setIsWeekLoading(true);
       setStorageError('');
+      const requestMutationVersion = weekMutationVersionRef.current[weekKey] ?? 0;
       let data: TaskRecord[] | null = null;
       let error: { message: string } | null = null;
 
@@ -1199,7 +1205,7 @@ function App() {
 
       if (error) {
         setStorageError(error.message);
-      } else {
+      } else if ((weekMutationVersionRef.current[weekKey] ?? 0) === requestMutationVersion) {
         setSavedWeeks((current) => ({
           ...current,
           [weekKey]: mergeLegacyDetailFields(
@@ -1453,6 +1459,7 @@ function App() {
   }
 
   function addRow(dayKey: string) {
+    markWeekMutated(weekKey);
     setSavedWeeks((current) => {
       const currentWeek = current[weekKey] ?? {};
       const currentRows = currentWeek[dayKey] ?? createEmptyRows(dayKey);
@@ -1476,6 +1483,7 @@ function App() {
   }
 
   function deleteRow(dayKey: string, rowId: string) {
+    markWeekMutated(weekKey);
     const currentWeek = savedWeeks[weekKey] ?? {};
     const currentRows = currentWeek[dayKey] ?? createEmptyRows(dayKey);
 
@@ -1517,6 +1525,7 @@ function App() {
   function updateRowFields(dayKey: string, rowId: string, fields: Partial<TaskRow>) {
     let nextRowsSnapshot: TaskRow[] | null = null;
     let updatedRow: TaskRow | null = null;
+    markWeekMutated(weekKey);
 
     setSavedWeeks((current) => {
       const currentWeekState = current[weekKey] ?? {};
@@ -1702,6 +1711,7 @@ function App() {
   }
 
   function moveTaskRow(sourceDayKey: string, sourceRowId: string, targetDayKey: string, targetRowId: string) {
+    markWeekMutated(weekKey);
     if (sourceDayKey === targetDayKey && sourceRowId === targetRowId) {
       return;
     }
