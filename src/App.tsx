@@ -106,8 +106,12 @@ type LegacyTaskRecord = {
 
 type ThemeName = 'white' | 'paper' | 'night' | 'sepia' | 'blueprint';
 type LanguageCode = 'en' | 'ru';
+type TextForm = 'formal' | 'informal';
+type GridlineMode = 'default' | 'crazy-minimalist';
 type RowStatus = string;
 type DetailColor = 'default' | 'blue' | 'green' | 'amber' | 'pink' | 'violet';
+type TimeInputFormat = '24h' | 'ampm';
+type PlannerView = 'weekly' | 'monthly' | 'yearly';
 
 const ROW_COUNT = 1;
 const MAX_ROW_COUNT = 16;
@@ -119,9 +123,11 @@ const LEGACY_DIRTY_WEEKS_STORAGE_KEY = 'dnevnik-dirty-weeks';
 const STORAGE_PREFIX = `dnevnik-${STORAGE_VERSION}-week`;
 const MISC_STORAGE_PREFIX = `dnevnik-${STORAGE_VERSION}-misc`;
 const DIRTY_WEEKS_STORAGE_KEY = `dnevnik-${STORAGE_VERSION}-dirty-weeks`;
-const PLANNER_TITLE_STORAGE_KEY = 'dnevnik-planner-title';
+const PLANNER_VIEW_STORAGE_KEY = 'dnevnik-planner-view';
 const THEME_STORAGE_KEY = 'dnevnik-theme';
 const LANGUAGE_STORAGE_KEY = 'dnevnik-language';
+const TEXT_FORM_STORAGE_KEY = 'dnevnik-text-form';
+const GRIDLINE_MODE_STORAGE_KEY = 'dnevnik-gridlines';
 const MONTH_NAMES = [
   'January',
   'February',
@@ -142,6 +148,8 @@ const UI_TEXT = {
     plannerSettings: 'Planner Settings',
     signedInUser: 'Signed in user',
     weeklyPlanner: 'Weekly Planner',
+    monthlyPlanner: 'Monthly Planner',
+    yearlyPlanner: 'Yearly Planner',
     loadingWeek: 'Loading this week from Supabase...',
     savingStatus: 'Saving...',
     savedStatus: 'Saved',
@@ -149,6 +157,8 @@ const UI_TEXT = {
     nextWeek: 'Next week',
     today: 'Home',
     calendar: 'Calendar',
+    search: 'Search',
+    searchShortcutHint: 'Open/close with Cmd/Ctrl+F',
     searchPlaceholder: 'Search tasks and notes',
     noMatchingTasks: 'No matching tasks',
     openAccount: 'Open account and settings',
@@ -164,6 +174,16 @@ const UI_TEXT = {
     theme: 'Theme',
     language: 'Language',
     languageNote: 'Interface language only. Your tasks and notes stay unchanged.',
+    textForm: 'Text form',
+    textFormNote: 'Interface text only. Informal mode switches the UI to lowercase.',
+    textFormFormal: 'Formal',
+    textFormInformal: 'Informal',
+    gridlines: 'Gridlines',
+    gridlinesNote: 'Changes the planner rules and button outlines.',
+    gridlinesDefault: 'Gridlines',
+    gridlinesNoGridlines: 'No gridlines',
+    gridlinesInformalDefault: 'Ugly gridlines',
+    gridlinesInformalMinimal: 'Big4 trauma',
     languageEnglish: 'English',
     languageRussian: 'Russian',
     themeWhite: 'White',
@@ -210,6 +230,11 @@ const UI_TEXT = {
     applyShortcutHint: 'Apply with Cmd/Ctrl+Enter',
     time: 'Time',
     timeSet: 'Set deadline time',
+    timeFormatLabel: 'Format',
+    timeFormat24h: '24-hour',
+    timeFormatAmpm: 'AM/PM',
+    timeInvalid24h: 'Use HH:MM in 24-hour format.',
+    timeInvalidAmpm: 'Use h:mm AM/PM.',
     customStatusTitle: 'Custom detail',
     customStatusPlaceholder: 'Enter a custom detail',
     customStatusSave: 'Save',
@@ -236,7 +261,8 @@ const UI_TEXT = {
     nextYear: 'Next year',
     close: 'Close',
     miscTasksTitle: 'Miscellaneous tasks',
-    miscTasksPlaceholder: 'Unassigned tasks, drag them later',
+    miscTasksPlaceholder: "What's on your mind?",
+    miscTasksTypedHint: 'drag later with Enter',
     miscTasksSend: 'Add task',
     miscTasksEmpty: 'Misc tasks you add here will wait below until you assign them.',
     deleteMiscTask: 'Delete misc task',
@@ -245,6 +271,8 @@ const UI_TEXT = {
     plannerSettings: 'Настройки планера',
     signedInUser: 'Пользователь',
     weeklyPlanner: 'Еженедельник',
+    monthlyPlanner: 'Ежемесячник',
+    yearlyPlanner: 'Годовой планер',
     loadingWeek: 'Загрузка недели из Supabase...',
     savingStatus: 'Сохранение...',
     savedStatus: 'Сохранено',
@@ -252,6 +280,8 @@ const UI_TEXT = {
     nextWeek: 'Следующая неделя',
     today: 'Домой',
     calendar: 'Календарь',
+    search: 'Поиск',
+    searchShortcutHint: 'Открыть/закрыть: Cmd/Ctrl+F',
     searchPlaceholder: 'Поиск по задачам и заметкам',
     noMatchingTasks: 'Ничего не найдено',
     openAccount: 'Открыть аккаунт и настройки',
@@ -267,6 +297,16 @@ const UI_TEXT = {
     theme: 'Тема',
     language: 'Язык',
     languageNote: 'Меняется только интерфейс. Задачи и заметки остаются без изменений.',
+    textForm: 'Форма текста',
+    textFormNote: 'Меняется только интерфейс. Неформальный режим переводит весь UI в нижний регистр.',
+    textFormFormal: 'Обычная',
+    textFormInformal: 'Неформальная',
+    gridlines: 'Линии',
+    gridlinesNote: 'Меняет линии планера и контуры кнопок.',
+    gridlinesDefault: 'Линии',
+    gridlinesNoGridlines: 'Без линий',
+    gridlinesInformalDefault: 'Некрасивые линии',
+    gridlinesInformalMinimal: 'Травма big4',
     languageEnglish: 'English',
     languageRussian: 'Русский',
     themeWhite: 'Белая',
@@ -313,6 +353,11 @@ const UI_TEXT = {
     applyShortcutHint: 'Применить: Cmd/Ctrl+Enter',
     time: 'Время',
     timeSet: 'Указать дедлайн',
+    timeFormatLabel: 'Формат',
+    timeFormat24h: '24 часа',
+    timeFormatAmpm: 'AM/PM',
+    timeInvalid24h: 'Используйте HH:MM в 24-часовом формате.',
+    timeInvalidAmpm: 'Используйте h:mm AM/PM.',
     customStatusTitle: 'Своя деталь',
     customStatusPlaceholder: 'Введите свою деталь',
     customStatusSave: 'Сохранить',
@@ -339,7 +384,8 @@ const UI_TEXT = {
     nextYear: 'Следующий год',
     close: 'Закрыть',
     miscTasksTitle: 'Разные задачи',
-    miscTasksPlaceholder: 'Неназначенные задачи, перетащите их позже',
+    miscTasksPlaceholder: 'Что у вас на уме?',
+    miscTasksTypedHint: 'перетащите позже через Enter',
     miscTasksSend: 'Добавить задачу',
     miscTasksEmpty: 'Задачи, которые вы добавите сюда, будут ждать внизу, пока вы их не распределите.',
     deleteMiscTask: 'Удалить задачу',
@@ -364,6 +410,40 @@ type UiText = (typeof UI_TEXT)[LanguageCode];
 
 function getDateLocale(language: LanguageCode) {
   return language === 'ru' ? 'ru-RU' : 'en-US';
+}
+
+function applyInformalTextForm<T>(value: T): T {
+  if (typeof value === 'string') {
+    return value.toLowerCase() as T;
+  }
+
+  if (typeof value === 'function') {
+    return (((...args: unknown[]) => String((value as (...innerArgs: unknown[]) => unknown)(...args)).toLowerCase()) as unknown) as T;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => applyInformalTextForm(entry)) as T;
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, applyInformalTextForm(entry)]),
+    ) as T;
+  }
+
+  return value;
+}
+
+function applyTextFormToString(value: string, textForm: TextForm) {
+  return textForm === 'informal' ? value.toLowerCase() : value;
+}
+
+function getGridlineOptionLabel(mode: GridlineMode, ui: UiText, textForm: TextForm) {
+  if (textForm === 'informal') {
+    return mode === 'default' ? ui.gridlinesInformalDefault : ui.gridlinesInformalMinimal;
+  }
+
+  return mode === 'default' ? ui.gridlinesDefault : ui.gridlinesNoGridlines;
 }
 
 function getStatusLabel(status: RowStatus, ui: UiText) {
@@ -408,6 +488,127 @@ function normalizePriorityAndTime(status: RowStatus, time: string) {
     status,
     time,
   };
+}
+
+function parseTimeForStorage(value: string, format: TimeInputFormat) {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return '';
+  }
+
+  if (format === '24h') {
+    const match = trimmed.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+
+    if (!match) {
+      return null;
+    }
+
+    return `${match[1].padStart(2, '0')}:${match[2]}`;
+  }
+
+  const match = trimmed.match(/^(1[0-2]|0?[1-9]):([0-5]\d)\s*([AaPp][Mm])$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const [, rawHour, minutes, meridiem] = match;
+  const hour = Number.parseInt(rawHour, 10);
+  const normalizedHour =
+    meridiem.toUpperCase() === 'PM'
+      ? hour === 12
+        ? 12
+        : hour + 12
+      : hour === 12
+        ? 0
+        : hour;
+
+  return `${String(normalizedHour).padStart(2, '0')}:${minutes}`;
+}
+
+function formatStoredTimeForInput(value: string, format: TimeInputFormat) {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return '';
+  }
+
+  const canonical = parseTimeForStorage(trimmed, '24h');
+
+  if (!canonical) {
+    return trimmed;
+  }
+
+  if (format === '24h') {
+    return canonical;
+  }
+
+  const [hoursText, minutes] = canonical.split(':');
+  const hours = Number.parseInt(hoursText, 10);
+  const meridiem = hours >= 12 ? 'PM' : 'AM';
+  const twelveHour = hours % 12 === 0 ? 12 : hours % 12;
+
+  return `${twelveHour}:${minutes} ${meridiem}`;
+}
+
+function convertTimeInputFormat(value: string, currentFormat: TimeInputFormat, nextFormat: TimeInputFormat) {
+  if (currentFormat === nextFormat) {
+    return value;
+  }
+
+  const canonical = parseTimeForStorage(value, currentFormat);
+
+  if (canonical === null) {
+    return value;
+  }
+
+  return formatStoredTimeForInput(canonical, nextFormat);
+}
+
+function formatTimeInputDraft(rawValue: string, format: TimeInputFormat) {
+  if (format === '24h') {
+    const digits = rawValue.replace(/\D/g, '').slice(0, 4);
+
+    if (digits.length <= 2) {
+      return digits;
+    }
+
+    return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+  }
+
+  const upper = rawValue.toUpperCase();
+  const meridiem = upper
+    .replace(/[^APM]/g, '')
+    .replace(/^([AP])M?.*$/, '$1M')
+    .slice(0, 2);
+  const rawTime = upper.replace(/[^0-9:]/g, '');
+  const colonIndex = rawTime.indexOf(':');
+  let timePart = '';
+
+  if (colonIndex >= 0) {
+    const rawHours = rawTime.slice(0, colonIndex).replace(/\D/g, '').slice(0, 2);
+    const rawMinutes = rawTime.slice(colonIndex + 1).replace(/\D/g, '').slice(0, 2);
+    timePart = rawMinutes ? `${rawHours}:${rawMinutes}` : `${rawHours}:`;
+  } else {
+    const digits = rawTime.replace(/\D/g, '').slice(0, 4);
+
+    if (digits.length <= 2) {
+      timePart = digits;
+    } else if (digits.length === 3) {
+      timePart = `${digits.slice(0, 1)}:${digits.slice(1)}`;
+    } else {
+      const firstTwoDigits = Number.parseInt(digits.slice(0, 2), 10);
+      const hourLength = digits[0] === '0' || (firstTwoDigits >= 10 && firstTwoDigits <= 12) ? 2 : 1;
+      timePart = `${digits.slice(0, hourLength)}:${digits.slice(hourLength)}`;
+    }
+  }
+
+  if (!meridiem) {
+    return timePart;
+  }
+
+  return timePart ? `${timePart} ${meridiem}` : meridiem;
 }
 
 function sanitizeNoteHtml(html: string) {
@@ -604,7 +805,7 @@ function parseWeekKey(weekKey: string) {
   return new Date(`${weekKey}T00:00:00`);
 }
 
-function formatSheetRange(days: DayData[], language: LanguageCode) {
+function formatSheetRange(days: DayData[], language: LanguageCode, textForm: TextForm) {
   const first = days[0];
   const last = days[days.length - 1];
   const [, ...firstDateParts] = first.key.split('-');
@@ -614,37 +815,8 @@ function formatSheetRange(days: DayData[], language: LanguageCode) {
   const [, ...lastDateParts] = last.key.split('-');
   const lastDate = new Date(`${lastDateParts.join('-')}T00:00:00`);
   const lastDay = String(lastDate.getDate());
-  return `${month.toUpperCase()} ${firstDay}-${lastDay}`;
-}
-
-function formatTopBarRange(weekStart: Date, language: LanguageCode) {
-  const locale = getDateLocale(language);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 5);
-
-  const sameYear = weekStart.getFullYear() === weekEnd.getFullYear();
-  const sameMonth = sameYear && weekStart.getMonth() === weekEnd.getMonth();
-
-  if (sameMonth) {
-    return `${weekStart.toLocaleDateString(locale, { month: 'long' })} ${weekStart.getDate()}-${weekEnd.getDate()}, ${weekEnd.getFullYear()}`;
-  }
-
-  if (sameYear) {
-    return `${weekStart.toLocaleDateString(locale, { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString(locale, {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    })}`;
-  }
-
-  return `${weekStart.toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' })} - ${weekEnd.toLocaleDateString(
-    locale,
-    {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    },
-  )}`;
+  const value = `${month.toUpperCase()} ${firstDay}-${lastDay}`;
+  return applyTextFormToString(value, textForm);
 }
 
 function getUserDisplayName(user: User | null) {
@@ -658,20 +830,6 @@ function getUserDisplayName(user: User | null) {
     (typeof user.user_metadata?.user_name === 'string' && user.user_metadata.user_name);
 
   return metadataName || user.email || UI_TEXT.en.signedInUser;
-}
-
-function getPlannerTitle(user: User | null, language: LanguageCode) {
-  const displayName = getUserDisplayName(user);
-  const firstSegment = displayName.split(/[\s@._-]+/).find(Boolean);
-
-  if (!user || !firstSegment) {
-    return UI_TEXT[language].weeklyPlanner;
-  }
-
-  const normalizedName = firstSegment.slice(0, 1).toUpperCase() + firstSegment.slice(1);
-  const suffix = normalizedName.endsWith('s') ? "'" : "'s";
-
-  return `${normalizedName}${suffix} ${UI_TEXT[language].weeklyPlanner}`;
 }
 
 function getUserInitials(user: User | null) {
@@ -692,7 +850,7 @@ function getUserInitials(user: User | null) {
   return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
 }
 
-function getMonthCalendar(year: number, month: number, language: LanguageCode): CalendarMonth {
+function getMonthCalendar(year: number, month: number, language: LanguageCode, textForm: TextForm): CalendarMonth {
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
   const firstMonday = getMonday(firstDay);
@@ -714,12 +872,18 @@ function getMonthCalendar(year: number, month: number, language: LanguageCode): 
 
   return {
     monthIndex: month,
-    label: new Date(year, month, 1).toLocaleString(getDateLocale(language), { month: 'long' }),
+    label: applyTextFormToString(new Date(year, month, 1).toLocaleString(getDateLocale(language), { month: 'long' }), textForm),
     weeks,
   };
 }
 
-function buildDays(monday: Date, saved: Record<string, TaskRow[]>, language: LanguageCode): DayData[] {
+function shiftMonth(date: Date, offset: number) {
+  const next = new Date(date.getFullYear(), date.getMonth() + offset, 1);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function buildDays(monday: Date, saved: Record<string, TaskRow[]>, language: LanguageCode, textForm: TextForm): DayData[] {
   return DAY_NAMES.map((label, index) => {
     const date = new Date(monday);
     date.setDate(monday.getDate() + index);
@@ -728,11 +892,14 @@ function buildDays(monday: Date, saved: Record<string, TaskRow[]>, language: Lan
 
     return {
       key,
-      label: DAY_LABELS[language][index],
-      date: date.toLocaleString(getDateLocale(language), {
-        month: 'short',
-        day: 'numeric',
-      }),
+      label: applyTextFormToString(DAY_LABELS[language][index], textForm),
+      date: applyTextFormToString(
+        date.toLocaleString(getDateLocale(language), {
+          month: 'short',
+          day: 'numeric',
+        }),
+        textForm,
+      ),
       rows,
     };
   });
@@ -854,7 +1021,7 @@ function getNotePreview(notes: string) {
     .trim();
 }
 
-function buildSearchResults(savedWeeks: Record<string, Record<string, TaskRow[]>>, query: string, language: LanguageCode) {
+function buildSearchResults(savedWeeks: Record<string, Record<string, TaskRow[]>>, query: string, language: LanguageCode, textForm: TextForm) {
   const normalizedQuery = query.trim().toLowerCase();
 
   if (!normalizedQuery) {
@@ -870,12 +1037,15 @@ function buildSearchResults(savedWeeks: Record<string, Record<string, TaskRow[]>
       const labelDate = new Date(`${date}T00:00:00`);
       const dayIndex = DAY_NAMES.findIndex((dayName) => dayName.toLowerCase() === weekday);
       const dayLabel =
-        dayIndex >= 0 ? DAY_LABELS[language][dayIndex] : `${weekday[0].toUpperCase()}${weekday.slice(1)}`;
-      const dateLabel = labelDate.toLocaleDateString(getDateLocale(language), {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      });
+        dayIndex >= 0 ? applyTextFormToString(DAY_LABELS[language][dayIndex], textForm) : applyTextFormToString(`${weekday[0].toUpperCase()}${weekday.slice(1)}`, textForm);
+      const dateLabel = applyTextFormToString(
+        labelDate.toLocaleDateString(getDateLocale(language), {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        }),
+        textForm,
+      );
 
       for (const row of rows) {
         const notesPreview = getNotePreview(row.notes);
@@ -980,6 +1150,14 @@ function App() {
     const savedLanguage = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
     return savedLanguage === 'ru' ? 'ru' : 'en';
   });
+  const [textForm, setTextForm] = useState<TextForm>(() => {
+    const savedTextForm = window.localStorage.getItem(TEXT_FORM_STORAGE_KEY);
+    return savedTextForm === 'formal' ? 'formal' : 'informal';
+  });
+  const [gridlineMode, setGridlineMode] = useState<GridlineMode>(() => {
+    const savedGridlineMode = window.localStorage.getItem(GRIDLINE_MODE_STORAGE_KEY);
+    return savedGridlineMode === 'default' ? 'default' : 'crazy-minimalist';
+  });
   const [theme, setTheme] = useState<ThemeName>(() => {
     const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
 
@@ -993,7 +1171,7 @@ function App() {
       return savedTheme;
     }
 
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'paper';
+    return 'white';
   });
   const [user, setUser] = useState<User | null>(null);
   const [authEmail, setAuthEmail] = useState('');
@@ -1008,15 +1186,23 @@ function App() {
   const [usesLegacyCompletedColumn, setUsesLegacyCompletedColumn] = useState(false);
   const [usesLegacyTimeColumn, setUsesLegacyTimeColumn] = useState(false);
   const [usesLegacyDetailColorColumn, setUsesLegacyDetailColorColumn] = useState(false);
-  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const [isPlannerViewMenuOpen, setIsPlannerViewMenuOpen] = useState(false);
   const [visibleYear, setVisibleYear] = useState(() => new Date().getFullYear());
+  const [visibleMonthDate, setVisibleMonthDate] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [hasHydratedLocalCache, setHasHydratedLocalCache] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [activeSearchRowId, setActiveSearchRowId] = useState<string | null>(null);
   const [pageTurn, setPageTurn] = useState<{ weekStart: Date; direction: 'forward' | 'backward' } | null>(null);
-  const [plannerTitleOverride, setPlannerTitleOverride] = useState('');
+  const [plannerView, setPlannerView] = useState<PlannerView>(() => {
+    const savedView = window.localStorage.getItem(PLANNER_VIEW_STORAGE_KEY);
+    return savedView === 'monthly' ? 'monthly' : 'weekly';
+  });
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
+  const plannerViewMenuRef = useRef<HTMLDivElement | null>(null);
+  const searchMenuRef = useRef<HTMLDivElement | null>(null);
+  const miscInboxInputRef = useRef<HTMLInputElement | null>(null);
   const previousWeekStartRef = useRef(weekStart);
   const savedWeeksRef = useRef(savedWeeks);
   const queuedDaySyncsRef = useRef<Record<string, TaskRow[]>>({});
@@ -1025,21 +1211,25 @@ function App() {
   const saveStateTimeoutRef = useRef<number | null>(null);
   const weekMutationVersionRef = useRef<Record<string, number>>({});
   const dirtyWeeksRef = useRef<Record<string, boolean>>({});
-  const ui = UI_TEXT[language];
+  const ui = useMemo(() => {
+    const baseUi = UI_TEXT[language];
+    return textForm === 'informal' ? applyInformalTextForm(baseUi) : baseUi;
+  }, [language, textForm]);
   const allowedEmails = useMemo(() => parseAllowedEmails(import.meta.env.VITE_ALLOWED_EMAILS), []);
   const isInviteOnlyBeta = allowedEmails.size > 0;
   const weekKey = formatWeekKey(weekStart);
   const yearMonths = useMemo(
-    () => MONTH_NAMES.map((_, monthIndex) => getMonthCalendar(visibleYear, monthIndex, language)),
-    [visibleYear, language],
+    () => MONTH_NAMES.map((_, monthIndex) => getMonthCalendar(visibleYear, monthIndex, language, textForm)),
+    [visibleYear, language, textForm],
+  );
+  const visibleMonthCalendar = useMemo(
+    () => getMonthCalendar(visibleMonthDate.getFullYear(), visibleMonthDate.getMonth(), language, textForm),
+    [language, visibleMonthDate, textForm],
   );
   const activityMap = useMemo(() => buildActivityMap(savedWeeks), [savedWeeks]);
-  const searchResults = useMemo(() => buildSearchResults(savedWeeks, searchQuery, language), [savedWeeks, searchQuery, language]);
-  const topBarRange = useMemo(() => formatTopBarRange(weekStart, language), [weekStart, language]);
+  const searchResults = useMemo(() => buildSearchResults(savedWeeks, searchQuery, language, textForm), [savedWeeks, searchQuery, language, textForm]);
   const userDisplayName = useMemo(() => getUserDisplayName(user), [user]);
   const userInitials = useMemo(() => getUserInitials(user), [user]);
-  const defaultPlannerTitle = useMemo(() => getPlannerTitle(user, language), [user, language]);
-  const plannerTitle = plannerTitleOverride || defaultPlannerTitle;
   const miscTasks = miscTasksByWeek[weekKey] ?? [];
   const accountModeLabel = user && isSupabaseConfigured ? ui.cloudMode : isSupabaseConfigured ? ui.demoMode : ui.localMode;
   const accountPanelTitle = user ? userDisplayName : ui.demoModeTitle;
@@ -1136,11 +1326,6 @@ function App() {
       } catch {
         window.localStorage.removeItem(MISC_STORAGE_PREFIX);
       }
-    }
-
-    const rawPlannerTitle = window.localStorage.getItem(PLANNER_TITLE_STORAGE_KEY);
-    if (rawPlannerTitle) {
-      setPlannerTitleOverride(rawPlannerTitle);
     }
 
     const rawDirtyWeeks = window.localStorage.getItem(DIRTY_WEEKS_STORAGE_KEY);
@@ -1367,16 +1552,8 @@ function App() {
   }, [hasHydratedLocalCache, miscTasksByWeek]);
 
   useEffect(() => {
-    if (!hasHydratedLocalCache) {
-      return;
-    }
-
-    if (plannerTitleOverride.trim()) {
-      window.localStorage.setItem(PLANNER_TITLE_STORAGE_KEY, plannerTitleOverride);
-    } else {
-      window.localStorage.removeItem(PLANNER_TITLE_STORAGE_KEY);
-    }
-  }, [hasHydratedLocalCache, plannerTitleOverride]);
+    window.localStorage.setItem(PLANNER_VIEW_STORAGE_KEY, plannerView);
+  }, [plannerView]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -1384,8 +1561,17 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
+    document.documentElement.dataset.gridlines = gridlineMode;
+    window.localStorage.setItem(GRIDLINE_MODE_STORAGE_KEY, gridlineMode);
+  }, [gridlineMode]);
+
+  useEffect(() => {
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
   }, [language]);
+
+  useEffect(() => {
+    window.localStorage.setItem(TEXT_FORM_STORAGE_KEY, textForm);
+  }, [textForm]);
 
   useEffect(() => {
     if (!isWeekLoading) {
@@ -1398,15 +1584,49 @@ function App() {
   }, [isWeekLoading]);
 
   useEffect(() => {
+    if (showInviteOnlyAuth || activeNotesEditor || activeStatusEditor || activeTimeEditor || activePriorityPicker) {
+      return;
+    }
+
+    const activeElement = document.activeElement as HTMLElement | null;
+    const isEditable =
+      Boolean(activeElement) &&
+      (activeElement?.tagName === 'INPUT' ||
+        activeElement?.tagName === 'TEXTAREA' ||
+        activeElement?.tagName === 'SELECT' ||
+        activeElement?.isContentEditable);
+
+    if (isEditable) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      miscInboxInputRef.current?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [showInviteOnlyAuth, activeNotesEditor, activeStatusEditor, activeTimeEditor, activePriorityPicker]);
+
+  useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
       if (!accountMenuRef.current?.contains(event.target as Node)) {
         setIsAccountMenuOpen(false);
+      }
+
+      if (!plannerViewMenuRef.current?.contains(event.target as Node)) {
+        setIsPlannerViewMenuOpen(false);
+      }
+
+      if (!searchMenuRef.current?.contains(event.target as Node)) {
+        setIsSearchOpen(false);
       }
     }
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setIsAccountMenuOpen(false);
+        setIsPlannerViewMenuOpen(false);
+        setIsSearchOpen(false);
       }
     }
 
@@ -1417,6 +1637,31 @@ function App() {
       document.removeEventListener('mousedown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
     };
+  }, []);
+
+  useEffect(() => {
+    function handleSearchShortcut(event: KeyboardEvent) {
+      if (event.key.toLowerCase() !== 'f' || (!event.metaKey && !event.ctrlKey)) {
+        return;
+      }
+
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName;
+      const isTextEntry =
+        tagName === 'INPUT' ||
+        tagName === 'TEXTAREA' ||
+        target?.isContentEditable;
+
+      if (isTextEntry) {
+        return;
+      }
+
+      event.preventDefault();
+      setIsSearchOpen((current) => !current);
+    }
+
+    document.addEventListener('keydown', handleSearchShortcut);
+    return () => document.removeEventListener('keydown', handleSearchShortcut);
   }, []);
 
   useEffect(() => {
@@ -1441,8 +1686,8 @@ function App() {
   }, [saveState]);
 
   const days = useMemo(() => {
-    return buildDays(weekStart, savedWeeks[weekKey] ?? {}, language);
-  }, [savedWeeks, weekKey, weekStart, language]);
+    return buildDays(weekStart, savedWeeks[weekKey] ?? {}, language, textForm);
+  }, [savedWeeks, weekKey, weekStart, language, textForm]);
 
   const leftPage = days.slice(0, 3);
   const rightPage = days.slice(3);
@@ -1461,8 +1706,8 @@ function App() {
       return [];
     }
 
-    return buildDays(pageTurn.weekStart, savedWeeks[outgoingWeekKey] ?? {}, language);
-  }, [language, outgoingWeekKey, pageTurn, savedWeeks]);
+    return buildDays(pageTurn.weekStart, savedWeeks[outgoingWeekKey] ?? {}, language, textForm);
+  }, [language, outgoingWeekKey, pageTurn, savedWeeks, textForm]);
   const outgoingLeftPage = outgoingDays.slice(0, 3);
   const outgoingRightPage = outgoingDays.slice(3);
 
@@ -1482,6 +1727,11 @@ function App() {
     const timeout = window.setTimeout(() => setPageTurn(null), 280);
     return () => window.clearTimeout(timeout);
   }, [weekKey, weekStart]);
+
+  useEffect(() => {
+    setVisibleYear(weekStart.getFullYear());
+    setVisibleMonthDate(new Date(weekStart.getFullYear(), weekStart.getMonth(), 1));
+  }, [weekStart]);
 
   async function syncDayRows(dayKey: string, rows: TaskRow[]) {
     if (!supabase || !user) {
@@ -2001,18 +2251,19 @@ function App() {
   }
 
   function resetToCurrentWeek() {
+    setPlannerView('weekly');
     setWeekStart(getMonday(new Date()));
   }
 
   function jumpToWeek(target: Date) {
     setWeekStart(getMonday(target));
-    setIsCalendarOpen(false);
   }
 
   function jumpToSearchResult(result: SearchResult) {
     setWeekStart(parseWeekKey(result.weekKey));
     setActiveSearchRowId(result.rowId);
     setSearchQuery('');
+    setIsSearchOpen(false);
   }
 
   useEffect(() => {
@@ -2104,22 +2355,51 @@ function App() {
         <div className="top-toolbar">
           <div className="top-toolbar-controls">
             <div className="top-toolbar-identity">
-              <button type="button" className="nav-button" onClick={resetToCurrentWeek}>
+              <button type="button" className="nav-button home-button" onClick={resetToCurrentWeek}>
                 {ui.today}
               </button>
 
-              <div>
-                <input
-                  className="top-toolbar-title-input"
-                  value={plannerTitle}
-                  onChange={(event) => setPlannerTitleOverride(event.target.value)}
-                  placeholder={defaultPlannerTitle}
-                  aria-label={ui.weeklyPlanner}
-                />
-                {isSupabaseConfigured && !user ? <p className="top-toolbar-demo-badge">{ui.demoModeBanner}</p> : null}
-                <p className="top-toolbar-range">{topBarRange}</p>
+              <div className="search-menu-shell" ref={searchMenuRef}>
+                <button type="button" className="nav-button search-trigger-button" onClick={() => setIsSearchOpen((current) => !current)}>
+                  {ui.search}
+                </button>
+                {isSearchOpen ? (
+                  <SearchDropdown
+                    ui={ui}
+                    query={searchQuery}
+                    results={searchResults}
+                    onClose={() => {
+                      setIsSearchOpen(false);
+                      setSearchQuery('');
+                    }}
+                    onChangeQuery={setSearchQuery}
+                    onPickResult={jumpToSearchResult}
+                  />
+                ) : null}
               </div>
             </div>
+          </div>
+
+          <div className="top-toolbar-middle">
+            <form
+              className="misc-inbox-form misc-inbox-form-top"
+              onSubmit={(event) => {
+                event.preventDefault();
+                addMiscTask();
+              }}
+            >
+              <div className="misc-inbox-input-shell">
+                <input
+                  ref={miscInboxInputRef}
+                  className="misc-inbox-input"
+                  value={miscTaskInput}
+                  onChange={(event) => setMiscTaskInput(event.target.value)}
+                  placeholder={ui.miscTasksPlaceholder}
+                  aria-label={ui.miscTasksTitle}
+                />
+                {miscTaskInput.trim() ? <span className="misc-inbox-typed-hint">{ui.miscTasksTypedHint}</span> : null}
+              </div>
+            </form>
           </div>
 
           <div className="top-toolbar-summary">
@@ -2135,41 +2415,37 @@ function App() {
               </button>
             ) : null}
 
-            <button type="button" className="nav-button" onClick={() => setIsCalendarOpen(true)}>
-              {ui.calendar}
-            </button>
+            <div>
+              {isSupabaseConfigured && !user ? <p className="top-toolbar-demo-badge">{ui.demoModeBanner}</p> : null}
+              <div className="planner-view-menu-shell" ref={plannerViewMenuRef}>
+                <button
+                  type="button"
+                  className="planner-view-trigger"
+                  onClick={() => setIsPlannerViewMenuOpen((current) => !current)}
+                  aria-label={ui.plannerSettings}
+                  aria-expanded={isPlannerViewMenuOpen}
+                >
+                  {plannerView === 'yearly' ? ui.yearlyPlanner : plannerView === 'monthly' ? ui.monthlyPlanner : ui.weeklyPlanner}
+                </button>
 
-            <div className="search-shell">
-              <input
-                className="search-input"
-                type="search"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder={ui.searchPlaceholder}
-                aria-label={ui.searchPlaceholder}
-              />
-              {searchQuery.trim() ? (
-                <div className="search-results">
-                  {searchResults.length > 0 ? (
-                    searchResults.map((result) => (
+                {isPlannerViewMenuOpen ? (
+                  <div className="planner-view-menu" role="menu" aria-label={ui.plannerSettings}>
+                    {(['weekly', 'monthly', 'yearly'] as PlannerView[]).map((view) => (
                       <button
-                        key={`${result.rowId}-${result.weekKey}`}
+                        key={view}
                         type="button"
-                        className="search-result"
-                        onClick={() => jumpToSearchResult(result)}
+                        className={`priority-menu-item planner-view-menu-item ${plannerView === view ? 'is-active' : ''}`}
+                        onClick={() => {
+                          setPlannerView(view);
+                          setIsPlannerViewMenuOpen(false);
+                        }}
                       >
-                        <span className="search-result-title">{result.title}</span>
-                        <span className="search-result-meta">
-                          {result.dayLabel} · {result.dateLabel}
-                        </span>
-                        {result.notesPreview ? <span className="search-result-preview">{result.notesPreview}</span> : null}
+                        {view === 'yearly' ? ui.yearlyPlanner : view === 'monthly' ? ui.monthlyPlanner : ui.weeklyPlanner}
                       </button>
-                    ))
-                  ) : (
-                    <div className="search-empty">{ui.noMatchingTasks}</div>
-                  )}
-                </div>
-              ) : null}
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
 
             <div className="account-menu-shell" ref={accountMenuRef}>
@@ -2220,6 +2496,33 @@ function App() {
                     </label>
                   </div>
 
+                  <div className="account-menu-section">
+                    <label className="account-menu-field">
+                      <span className="top-toolbar-group-label">{ui.textForm}</span>
+                      <select className="theme-select" value={textForm} onChange={(event) => setTextForm(event.target.value as TextForm)} aria-label={ui.textForm}>
+                        <option value="formal">{ui.textFormFormal}</option>
+                        <option value="informal">{ui.textFormInformal}</option>
+                      </select>
+                      <span className="account-menu-copy">{ui.textFormNote}</span>
+                    </label>
+                  </div>
+
+                  <div className="account-menu-section">
+                    <label className="account-menu-field">
+                      <span className="top-toolbar-group-label">{ui.gridlines}</span>
+                      <select
+                        className="theme-select"
+                        value={gridlineMode}
+                        onChange={(event) => setGridlineMode(event.target.value as GridlineMode)}
+                        aria-label={ui.gridlines}
+                      >
+                        <option value="default">{getGridlineOptionLabel('default', ui, textForm)}</option>
+                        <option value="crazy-minimalist">{getGridlineOptionLabel('crazy-minimalist', ui, textForm)}</option>
+                      </select>
+                      <span className="account-menu-copy">{ui.gridlinesNote}</span>
+                    </label>
+                  </div>
+
                   {isSupabaseConfigured && user ? (
                     <div className="account-menu-section">
                       <button type="button" className="nav-button account-menu-action" onClick={signOut}>
@@ -2247,66 +2550,137 @@ function App() {
         </div>
       </header>
 
-      <main className="spread-stage">
-        <button
-          type="button"
-          className="spread-hit-zone spread-hit-zone-left"
-          onClick={() => moveWeek(-1)}
-          onDragOver={(event) => {
-            if (!draggedMiscTaskId) {
-              return;
-            }
+      {plannerView === 'yearly' ? (
+        <main className="calendar-planner-stage">
+          <YearlyPlanner
+            language={language}
+            textForm={textForm}
+            ui={ui}
+            visibleYear={visibleYear}
+            months={yearMonths}
+            activityMap={activityMap}
+            onPickWeek={jumpToWeek}
+            onPreviousYear={() => setVisibleYear((current) => current - 1)}
+            onNextYear={() => setVisibleYear((current) => current + 1)}
+          />
+        </main>
+      ) : plannerView === 'monthly' ? (
+        <main className="calendar-planner-stage">
+          <MonthlyPlanner
+            language={language}
+            textForm={textForm}
+            ui={ui}
+            month={visibleMonthCalendar}
+            visibleMonthDate={visibleMonthDate}
+            selectedWeekKey={weekKey}
+            activityMap={activityMap}
+            onPickWeek={jumpToWeek}
+            onPreviousMonth={() => setVisibleMonthDate((current) => shiftMonth(current, -1))}
+            onNextMonth={() => setVisibleMonthDate((current) => shiftMonth(current, 1))}
+            onToday={() => {
+              const today = new Date();
+              setVisibleMonthDate(new Date(today.getFullYear(), today.getMonth(), 1));
+              setWeekStart(getMonday(today));
+            }}
+          />
+        </main>
+      ) : (
+        <main className="spread-stage">
+          <button
+            type="button"
+            className="spread-hit-zone spread-hit-zone-left"
+            onClick={() => moveWeek(-1)}
+            onDragOver={(event) => {
+              if (!draggedMiscTaskId) {
+                return;
+              }
 
-            event.preventDefault();
-            event.dataTransfer.dropEffect = 'move';
-          }}
-          onDrop={(event) => {
-            event.preventDefault();
-            const taskId = event.dataTransfer.getData('text/plain') || draggedMiscTaskId;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'move';
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              const taskId = event.dataTransfer.getData('text/plain') || draggedMiscTaskId;
 
-            if (taskId) {
-              moveMiscTaskToWeek(taskId, -1);
-            }
-          }}
-          aria-label={ui.previousWeek}
-        >
-          <span className="spread-hit-zone-indicator" aria-hidden="true">
-            {'<'}
-          </span>
-        </button>
-        <button
-          type="button"
-          className="spread-hit-zone spread-hit-zone-right"
-          onClick={() => moveWeek(1)}
-          onDragOver={(event) => {
-            if (!draggedMiscTaskId) {
-              return;
-            }
+              if (taskId) {
+                moveMiscTaskToWeek(taskId, -1);
+              }
+            }}
+            aria-label={ui.previousWeek}
+          >
+            <span className="spread-hit-zone-indicator" aria-hidden="true">
+              {'<'}
+            </span>
+          </button>
+          <button
+            type="button"
+            className="spread-hit-zone spread-hit-zone-right"
+            onClick={() => moveWeek(1)}
+            onDragOver={(event) => {
+              if (!draggedMiscTaskId) {
+                return;
+              }
 
-            event.preventDefault();
-            event.dataTransfer.dropEffect = 'move';
-          }}
-          onDrop={(event) => {
-            event.preventDefault();
-            const taskId = event.dataTransfer.getData('text/plain') || draggedMiscTaskId;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'move';
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              const taskId = event.dataTransfer.getData('text/plain') || draggedMiscTaskId;
 
-            if (taskId) {
-              moveMiscTaskToWeek(taskId, 1);
-            }
-          }}
-          aria-label={ui.nextWeek}
-        >
-          <span className="spread-hit-zone-indicator" aria-hidden="true">
-            {'>'}
-          </span>
-        </button>
+              if (taskId) {
+                moveMiscTaskToWeek(taskId, 1);
+              }
+            }}
+            aria-label={ui.nextWeek}
+          >
+            <span className="spread-hit-zone-indicator" aria-hidden="true">
+              {'>'}
+            </span>
+          </button>
 
-        <div className="spread-frame">
-          {pageTurn ? (
-            <div className={`spread spread-turn-layer spread-outgoing is-${pageTurn.direction}`} aria-hidden="true">
+          <div className="spread-frame">
+            {pageTurn ? (
+              <div className={`spread spread-turn-layer spread-outgoing is-${pageTurn.direction}`} aria-hidden="true">
+                <PageSheet
+                  headerLabel={formatSheetRange(outgoingLeftPage, language, textForm)}
+                  days={outgoingLeftPage}
+                  onUpdateTaskTitle={updateTaskTitle}
+                  ui={ui}
+                  onAddRow={addRow}
+                  onDeleteRow={deleteRow}
+                  onMoveTaskRow={moveTaskRow}
+                  onOpenNotes={openNotesEditor}
+                  onAssignMiscTask={assignMiscTaskToRow}
+                  draggedMiscTaskId={draggedMiscTaskId}
+                  draggedTaskRow={draggedTaskRow}
+                  onSetDraggedTaskRow={setDraggedTaskRow}
+                  activeDayIndex={getActiveDayIndexForWeek(outgoingWeekKey, todayWeekKey, todayDayIndex)}
+                  activeSearchRowId={activeSearchRowId}
+                />
+                <PageSheet
+                  headerLabel={formatSheetRange(outgoingRightPage, language, textForm)}
+                  days={outgoingRightPage}
+                  onUpdateTaskTitle={updateTaskTitle}
+                  ui={ui}
+                  onAddRow={addRow}
+                  onDeleteRow={deleteRow}
+                  onMoveTaskRow={moveTaskRow}
+                  onOpenNotes={openNotesEditor}
+                  onAssignMiscTask={assignMiscTaskToRow}
+                  draggedMiscTaskId={draggedMiscTaskId}
+                  draggedTaskRow={draggedTaskRow}
+                  onSetDraggedTaskRow={setDraggedTaskRow}
+                  activeDayIndex={getActiveDayIndexForWeek(outgoingWeekKey, todayWeekKey, todayDayIndex)}
+                  activeSearchRowId={activeSearchRowId}
+                />
+              </div>
+            ) : null}
+
+            <div className={`spread spread-current ${pageTurn ? `is-turning is-${pageTurn.direction}` : ''}`}>
               <PageSheet
-                headerLabel={formatSheetRange(outgoingLeftPage, language)}
-                days={outgoingLeftPage}
+                headerLabel={formatSheetRange(leftPage, language, textForm)}
+                days={leftPage}
                 onUpdateTaskTitle={updateTaskTitle}
                 ui={ui}
                 onAddRow={addRow}
@@ -2317,12 +2691,12 @@ function App() {
                 draggedMiscTaskId={draggedMiscTaskId}
                 draggedTaskRow={draggedTaskRow}
                 onSetDraggedTaskRow={setDraggedTaskRow}
-                activeDayIndex={getActiveDayIndexForWeek(outgoingWeekKey, todayWeekKey, todayDayIndex)}
+                activeDayIndex={getActiveDayIndexForWeek(weekKey, todayWeekKey, todayDayIndex)}
                 activeSearchRowId={activeSearchRowId}
               />
               <PageSheet
-                headerLabel={formatSheetRange(outgoingRightPage, language)}
-                days={outgoingRightPage}
+                headerLabel={formatSheetRange(rightPage, language, textForm)}
+                days={rightPage}
                 onUpdateTaskTitle={updateTaskTitle}
                 ui={ui}
                 onAddRow={addRow}
@@ -2333,68 +2707,15 @@ function App() {
                 draggedMiscTaskId={draggedMiscTaskId}
                 draggedTaskRow={draggedTaskRow}
                 onSetDraggedTaskRow={setDraggedTaskRow}
-                activeDayIndex={getActiveDayIndexForWeek(outgoingWeekKey, todayWeekKey, todayDayIndex)}
+                activeDayIndex={getActiveDayIndexForWeek(weekKey, todayWeekKey, todayDayIndex)}
                 activeSearchRowId={activeSearchRowId}
               />
             </div>
-          ) : null}
-
-          <div className={`spread spread-current ${pageTurn ? `is-turning is-${pageTurn.direction}` : ''}`}>
-            <PageSheet
-              headerLabel={formatSheetRange(leftPage, language)}
-              days={leftPage}
-              onUpdateTaskTitle={updateTaskTitle}
-              ui={ui}
-              onAddRow={addRow}
-              onDeleteRow={deleteRow}
-              onMoveTaskRow={moveTaskRow}
-              onOpenNotes={openNotesEditor}
-              onAssignMiscTask={assignMiscTaskToRow}
-              draggedMiscTaskId={draggedMiscTaskId}
-              draggedTaskRow={draggedTaskRow}
-              onSetDraggedTaskRow={setDraggedTaskRow}
-              activeDayIndex={getActiveDayIndexForWeek(weekKey, todayWeekKey, todayDayIndex)}
-              activeSearchRowId={activeSearchRowId}
-            />
-            <PageSheet
-              headerLabel={formatSheetRange(rightPage, language)}
-              days={rightPage}
-              onUpdateTaskTitle={updateTaskTitle}
-              ui={ui}
-              onAddRow={addRow}
-              onDeleteRow={deleteRow}
-              onMoveTaskRow={moveTaskRow}
-              onOpenNotes={openNotesEditor}
-              onAssignMiscTask={assignMiscTaskToRow}
-              draggedMiscTaskId={draggedMiscTaskId}
-              draggedTaskRow={draggedTaskRow}
-              onSetDraggedTaskRow={setDraggedTaskRow}
-              activeDayIndex={getActiveDayIndexForWeek(weekKey, todayWeekKey, todayDayIndex)}
-              activeSearchRowId={activeSearchRowId}
-            />
           </div>
-        </div>
-      </main>
+        </main>
+      )}
 
       <section className="misc-inbox-shell">
-        <form
-          className="misc-inbox-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            addMiscTask();
-          }}
-        >
-          <div className="misc-inbox-input-shell">
-            <input
-              className="misc-inbox-input"
-              value={miscTaskInput}
-              onChange={(event) => setMiscTaskInput(event.target.value)}
-              placeholder={ui.miscTasksPlaceholder}
-              aria-label={ui.miscTasksTitle}
-            />
-          </div>
-        </form>
-
         <div className="misc-task-list">
           {miscTasks.length > 0 ? (
             miscTasks.map((task) => (
@@ -2503,20 +2824,6 @@ function App() {
         />
       ) : null}
 
-      {isCalendarOpen ? (
-        <CalendarNavigator
-          language={language}
-          ui={ui}
-          visibleYear={visibleYear}
-          months={yearMonths}
-          selectedWeekKey={weekKey}
-          activityMap={activityMap}
-          onClose={() => setIsCalendarOpen(false)}
-          onPickWeek={jumpToWeek}
-          onPreviousYear={() => setVisibleYear((current) => current - 1)}
-          onNextYear={() => setVisibleYear((current) => current + 1)}
-        />
-      ) : null}
     </div>
   );
 }
@@ -2724,7 +3031,7 @@ function DaySection({
       </div>
 
       <div
-        className="task-grid day-grid"
+        className={`task-grid day-grid ${day.rows.length < 5 ? 'is-low-density' : ''}`}
         style={
           {
             '--visible-row-count': day.rows.length,
@@ -2907,17 +3214,39 @@ type TimeDialogProps = {
   onSave: (value: string) => void;
 };
 
-type CalendarNavigatorProps = {
+type SearchDropdownProps = {
+  ui: UiText;
+  query: string;
+  results: SearchResult[];
+  onClose: () => void;
+  onChangeQuery: (value: string) => void;
+  onPickResult: (result: SearchResult) => void;
+};
+
+type YearlyPlannerProps = {
   language: LanguageCode;
+  textForm: TextForm;
   ui: UiText;
   visibleYear: number;
   months: CalendarMonth[];
-  selectedWeekKey: string;
   activityMap: Map<string, number>;
-  onClose: () => void;
   onPickWeek: (date: Date) => void;
   onPreviousYear: () => void;
   onNextYear: () => void;
+};
+
+type MonthlyPlannerProps = {
+  language: LanguageCode;
+  textForm: TextForm;
+  ui: UiText;
+  month: CalendarMonth;
+  visibleMonthDate: Date;
+  selectedWeekKey: string;
+  activityMap: Map<string, number>;
+  onPickWeek: (date: Date) => void;
+  onPreviousMonth: () => void;
+  onNextMonth: () => void;
+  onToday: () => void;
 };
 
 function CustomStatusDialog({ activeStatusEditor, ui, onClose, onSave }: CustomStatusDialogProps) {
@@ -3089,11 +3418,36 @@ function PriorityDialog({ activePriorityPicker, ui, onClose, onApply, onCustom }
 }
 
 function TimeDialog({ activeTimeEditor, ui, onClose, onSave }: TimeDialogProps) {
-  const [value, setValue] = useState(activeTimeEditor.time);
+  const [inputFormat, setInputFormat] = useState<TimeInputFormat>('24h');
+  const [value, setValue] = useState(formatStoredTimeForInput(activeTimeEditor.time, '24h'));
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    setValue(activeTimeEditor.time);
+    setInputFormat('24h');
+    setValue(formatStoredTimeForInput(activeTimeEditor.time, '24h'));
+    setError('');
   }, [activeTimeEditor]);
+
+  useEffect(() => {
+    if (!value.trim()) {
+      setError('');
+      return;
+    }
+
+    setError(parseTimeForStorage(value, inputFormat) === null ? inputFormat === '24h' ? ui.timeInvalid24h : ui.timeInvalidAmpm : '');
+  }, [inputFormat, ui.timeInvalid24h, ui.timeInvalidAmpm, value]);
+
+  function applyTimeValue() {
+    const normalized = parseTimeForStorage(value, inputFormat);
+
+    if (normalized === null) {
+      setError(inputFormat === '24h' ? ui.timeInvalid24h : ui.timeInvalidAmpm);
+      return;
+    }
+
+    setError('');
+    onSave(normalized);
+  }
 
   useEffect(() => {
     function handleKeydown(event: KeyboardEvent) {
@@ -3105,13 +3459,13 @@ function TimeDialog({ activeTimeEditor, ui, onClose, onSave }: TimeDialogProps) 
 
       if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
-        onSave(value);
+        applyTimeValue();
       }
     }
 
     document.addEventListener('keydown', handleKeydown);
     return () => document.removeEventListener('keydown', handleKeydown);
-  }, [onClose, onSave, value]);
+  }, [inputFormat, onClose, onSave, ui.timeInvalid24h, ui.timeInvalidAmpm, value]);
 
   return (
     <div className="dialog-backdrop" role="presentation">
@@ -3128,29 +3482,120 @@ function TimeDialog({ activeTimeEditor, ui, onClose, onSave }: TimeDialogProps) 
           </button>
         </div>
 
+        <div className="meta-dialog-format-row">
+          <span className="dialog-label">{ui.timeFormatLabel}</span>
+          <div className="meta-dialog-segmented">
+            <button
+              type="button"
+              className={`meta-dialog-segment ${inputFormat === '24h' ? 'is-active' : ''}`}
+              onClick={() => {
+                setValue((current) => convertTimeInputFormat(current, inputFormat, '24h'));
+                setInputFormat('24h');
+                setError('');
+              }}
+            >
+              {ui.timeFormat24h}
+            </button>
+            <button
+              type="button"
+              className={`meta-dialog-segment ${inputFormat === 'ampm' ? 'is-active' : ''}`}
+              onClick={() => {
+                setValue((current) => convertTimeInputFormat(current, inputFormat, 'ampm'));
+                setInputFormat('ampm');
+                setError('');
+              }}
+            >
+              {ui.timeFormatAmpm}
+            </button>
+          </div>
+        </div>
+
         <input
           className="meta-dialog-input"
           value={value}
-          onChange={(event) => setValue(event.target.value.slice(0, 10))}
-          placeholder="HH:MM"
-          inputMode="numeric"
+          onChange={(event) => {
+            setValue(formatTimeInputDraft(event.target.value, inputFormat));
+          }}
+          placeholder={inputFormat === '24h' ? 'HH:MM' : 'h:mm AM'}
+          inputMode={inputFormat === '24h' ? 'numeric' : 'text'}
           spellCheck={false}
           autoFocus
         />
+        {error ? <p className="meta-dialog-error">{error}</p> : null}
 
         <div className="meta-dialog-actions">
           <p className="meta-dialog-hint">{ui.applyShortcutHint}</p>
-          <button type="button" className="nav-button" onClick={onClose}>
-            {ui.customStatusCancel}
-          </button>
-          <button type="button" className="nav-button" onClick={() => onSave('')}>
-            {ui.timeClear}
-          </button>
-          <button type="button" className="nav-button" onClick={() => onSave(value)}>
+          <button type="button" className="nav-button" onClick={applyTimeValue}>
             {ui.timeSave}
           </button>
         </div>
       </section>
+    </div>
+  );
+}
+
+function SearchDropdown({ ui, query, results, onClose, onChangeQuery, onPickResult }: SearchDropdownProps) {
+  useEffect(() => {
+    function handleKeydown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+      }
+    }
+
+    document.addEventListener('keydown', handleKeydown);
+    return () => document.removeEventListener('keydown', handleKeydown);
+  }, [onClose]);
+
+  return (
+    <div className="search-dropdown" role="dialog" aria-labelledby="search-dialog-title">
+      <div className="search-dropdown-header">
+        <div>
+          <p className="dialog-label">{ui.search}</p>
+          <h2 id="search-dialog-title" className="dialog-title">
+            {ui.searchPlaceholder}
+          </h2>
+          <p className="search-dropdown-hint">{ui.searchShortcutHint}</p>
+        </div>
+        <button type="button" className="notes-dialog-close" onClick={onClose} aria-label={ui.close}>
+          ×
+        </button>
+      </div>
+
+      <input
+        className="search-input"
+        type="search"
+        value={query}
+        onChange={(event) => onChangeQuery(event.target.value)}
+        placeholder={ui.searchPlaceholder}
+        aria-label={ui.searchPlaceholder}
+        autoFocus
+      />
+
+      {query.trim() ? (
+        <div className="search-results search-results-dropdown">
+          {results.length > 0 ? (
+            results.map((result) => (
+              <button
+                key={`${result.rowId}-${result.weekKey}`}
+                type="button"
+                className="search-result"
+                onClick={() => onPickResult(result)}
+              >
+                <span className="search-result-title">{result.title}</span>
+                <span className="search-result-meta">
+                  {result.dayLabel} · {result.dateLabel}
+                </span>
+                {result.notesPreview ? <span className="search-result-preview">{result.notesPreview}</span> : null}
+              </button>
+            ))
+          ) : (
+            <div className="search-empty">{ui.noMatchingTasks}</div>
+          )}
+        </div>
+      ) : (
+        <div className="search-empty search-empty-dropdown">{ui.searchPlaceholder}</div>
+      )}
     </div>
   );
 }
@@ -3466,95 +3911,160 @@ function NotesDialog({ activeNotesEditor, ui, onClose, onChangeTaskTitle, onChan
   );
 }
 
-function CalendarNavigator({
+function YearlyPlanner({
   language,
+  textForm,
   ui,
   visibleYear,
   months,
-  selectedWeekKey,
   activityMap,
-  onClose,
   onPickWeek,
   onPreviousYear,
   onNextYear,
-}: CalendarNavigatorProps) {
-  const todayKey = formatWeekKey(getMonday(new Date()));
+}: YearlyPlannerProps) {
+  const todayDateKey = formatDateKey(new Date());
 
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <section
-        className="calendar-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="calendar-dialog-title"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="calendar-dialog-header">
-          <button type="button" className="nav-button nav-button-inline nav-arrow" onClick={onPreviousYear} aria-label={ui.previousYear}>
+    <section className="calendar-dialog calendar-dialog-inline" aria-labelledby="calendar-dialog-title">
+      <div className="calendar-dialog-header">
+        <button type="button" className="nav-button nav-button-inline nav-arrow" onClick={onPreviousYear} aria-label={ui.previousYear}>
+          ←
+        </button>
+        <h2 id="calendar-dialog-title" className="dialog-title">
+          {visibleYear}
+        </h2>
+        <div className="calendar-dialog-actions">
+          <button type="button" className="nav-button nav-button-inline nav-arrow" onClick={onNextYear} aria-label={ui.nextYear}>
+            →
+          </button>
+        </div>
+      </div>
+
+      <div className="calendar-grid">
+        {months.map((month) => (
+          <section key={month.label} className="calendar-month">
+            <h3 className="calendar-month-title">{month.label}</h3>
+            <div className="calendar-weekdays">
+              {CALENDAR_WEEKDAY_LABELS[language].map((label, index) => (
+                <span key={`${label}-${index}`}>{applyTextFormToString(label, textForm)}</span>
+              ))}
+            </div>
+            <div className="calendar-weeks">
+              {month.weeks.map((week) => {
+                const weekKey = formatWeekKey(getMonday(week[0]));
+                const weekActivity = week.reduce((total, day) => total + (activityMap.get(formatDateKey(day)) ?? 0), 0);
+
+                return (
+                  <button
+                    key={weekKey}
+                    type="button"
+                    className={`calendar-week ${weekActivity > 0 ? 'has-activity' : ''}`}
+                    onClick={() => onPickWeek(week[0])}
+                  >
+                    {week.map((day) => {
+                      const dateKey = formatDateKey(day);
+                      const activity = activityMap.get(dateKey) ?? 0;
+                      const intensity =
+                        activity >= 6 ? 'activity-4' : activity >= 4 ? 'activity-3' : activity >= 2 ? 'activity-2' : activity >= 1 ? 'activity-1' : '';
+
+                      return (
+                        <span
+                          key={dateKey}
+                          className={`${day.getMonth() === month.monthIndex ? '' : 'is-outside-month'} ${
+                            dateKey === todayDateKey ? 'is-today' : ''
+                          } ${intensity}`.trim()}
+                        >
+                          {day.getDate()}
+                        </span>
+                      );
+                    })}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function MonthlyPlanner({
+  language,
+  textForm,
+  ui,
+  month,
+  visibleMonthDate,
+  selectedWeekKey,
+  activityMap,
+  onPickWeek,
+  onPreviousMonth,
+  onNextMonth,
+  onToday,
+}: MonthlyPlannerProps) {
+  const todayDateKey = formatDateKey(new Date());
+  const monthTitle = applyTextFormToString(
+    visibleMonthDate.toLocaleDateString(getDateLocale(language), {
+      month: 'long',
+      year: 'numeric',
+    }),
+    textForm,
+  );
+
+  return (
+    <section className="calendar-dialog calendar-dialog-inline monthly-planner" aria-labelledby="monthly-planner-title">
+      <div className="calendar-dialog-header monthly-planner-header">
+        <div>
+          <h2 id="monthly-planner-title" className="monthly-planner-title">
+            {monthTitle}
+          </h2>
+        </div>
+        <div className="calendar-dialog-actions">
+          <button type="button" className="nav-button nav-button-inline nav-arrow" onClick={onPreviousMonth} aria-label={ui.previousWeek}>
             ←
           </button>
-          <h2 id="calendar-dialog-title" className="dialog-title">
-            {visibleYear}
-          </h2>
-          <div className="calendar-dialog-actions">
-            <button type="button" className="nav-button nav-button-inline nav-arrow" onClick={onNextYear} aria-label={ui.nextYear}>
-              →
-            </button>
-            <button type="button" className="nav-button nav-button-inline" onClick={onClose}>
-              {ui.close}
-            </button>
-          </div>
+          <button type="button" className="nav-button nav-button-inline" onClick={onToday}>
+            {ui.today}
+          </button>
+          <button type="button" className="nav-button nav-button-inline nav-arrow" onClick={onNextMonth} aria-label={ui.nextWeek}>
+            →
+          </button>
         </div>
+      </div>
 
-        <div className="calendar-grid">
-          {months.map((month) => (
-            <section key={month.label} className="calendar-month">
-              <h3 className="calendar-month-title">{month.label}</h3>
-              <div className="calendar-weekdays">
-                {CALENDAR_WEEKDAY_LABELS[language].map((label, index) => (
-                  <span key={`${label}-${index}`}>{label}</span>
-                ))}
-              </div>
-              <div className="calendar-weeks">
-                {month.weeks.map((week) => {
-                  const weekKey = formatWeekKey(getMonday(week[0]));
-                  const isSelected = weekKey === selectedWeekKey;
-                  const isCurrent = weekKey === todayKey;
-                  const weekActivity = week.reduce((total, day) => total + (activityMap.get(formatDateKey(day)) ?? 0), 0);
+      <div className="monthly-weekdays">
+        {DAY_LABELS[language].concat(language === 'ru' ? ['Воскресенье'] : ['Sunday']).map((label, index) => (
+          <span key={`${label}-${index}`}>{applyTextFormToString(label, textForm)}</span>
+        ))}
+      </div>
 
-                  return (
-                    <button
-                      key={weekKey}
-                      type="button"
-                      className={`calendar-week ${isSelected ? 'is-selected' : ''} ${isCurrent ? 'is-current' : ''} ${
-                        weekActivity > 0 ? 'has-activity' : ''
-                      }`}
-                      onClick={() => onPickWeek(week[0])}
-                    >
-                      {week.map((day) => {
-                        const dateKey = formatDateKey(day);
-                        const activity = activityMap.get(dateKey) ?? 0;
-                        const intensity =
-                          activity >= 6 ? 'activity-4' : activity >= 4 ? 'activity-3' : activity >= 2 ? 'activity-2' : activity >= 1 ? 'activity-1' : '';
+      <div className="monthly-grid">
+        {month.weeks.flatMap((week) =>
+          week.map((day) => {
+            const dateKey = formatDateKey(day);
+            const weekKey = formatWeekKey(getMonday(day));
+            const isCurrentMonth = day.getMonth() === month.monthIndex;
+            const isToday = dateKey === todayDateKey;
+            const activity = activityMap.get(dateKey) ?? 0;
+            const intensity =
+              activity >= 6 ? 'activity-4' : activity >= 4 ? 'activity-3' : activity >= 2 ? 'activity-2' : activity >= 1 ? 'activity-1' : '';
 
-                        return (
-                          <span
-                            key={dateKey}
-                            className={`${day.getMonth() === month.monthIndex ? '' : 'is-outside-month'} ${intensity}`.trim()}
-                          >
-                            {day.getDate()}
-                          </span>
-                        );
-                      })}
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
-        </div>
-      </section>
-    </div>
+            return (
+              <button
+                key={dateKey}
+                type="button"
+                className={`monthly-day ${isCurrentMonth ? '' : 'is-outside-month'} ${weekKey === selectedWeekKey ? 'is-selected' : ''} ${
+                  isToday ? 'is-today' : ''
+                } ${intensity}`.trim()}
+                onClick={() => onPickWeek(day)}
+              >
+                <span className="monthly-day-number">{day.getDate()}</span>
+              </button>
+            );
+          }),
+        )}
+      </div>
+    </section>
   );
 }
 
