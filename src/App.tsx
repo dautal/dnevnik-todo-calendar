@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 
@@ -30,6 +31,10 @@ type ActiveNotesEditor = {
   rowId: string;
   taskTitle: string;
   notes: string;
+  status: RowStatus;
+  time: string;
+  detailColor: DetailColor;
+  priorityDismissed: boolean;
 };
 
 type ActiveStatusEditor = {
@@ -37,6 +42,12 @@ type ActiveStatusEditor = {
   rowId: string;
   status: string;
   color: DetailColor;
+};
+
+type ActiveTimeEditor = {
+  dayKey: string;
+  rowId: string;
+  time: string;
 };
 
 type ActivePriorityPicker = {
@@ -98,11 +109,16 @@ type LanguageCode = 'en' | 'ru';
 type RowStatus = string;
 type DetailColor = 'default' | 'blue' | 'green' | 'amber' | 'pink' | 'violet';
 
-const ROW_COUNT = 6;
+const ROW_COUNT = 1;
 const MAX_ROW_COUNT = 16;
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const STORAGE_PREFIX = 'dnevnik-week';
-const MISC_STORAGE_PREFIX = 'dnevnik-misc';
+const STORAGE_VERSION = 'v2';
+const LEGACY_STORAGE_PREFIX = 'dnevnik-week';
+const LEGACY_MISC_STORAGE_PREFIX = 'dnevnik-misc';
+const LEGACY_DIRTY_WEEKS_STORAGE_KEY = 'dnevnik-dirty-weeks';
+const STORAGE_PREFIX = `dnevnik-${STORAGE_VERSION}-week`;
+const MISC_STORAGE_PREFIX = `dnevnik-${STORAGE_VERSION}-misc`;
+const DIRTY_WEEKS_STORAGE_KEY = `dnevnik-${STORAGE_VERSION}-dirty-weeks`;
 const PLANNER_TITLE_STORAGE_KEY = 'dnevnik-planner-title';
 const THEME_STORAGE_KEY = 'dnevnik-theme';
 const LANGUAGE_STORAGE_KEY = 'dnevnik-language';
@@ -139,6 +155,10 @@ const UI_TEXT = {
     accountSettings: 'Account and settings',
     cloudMode: 'Cloud Mode',
     localMode: 'Local Mode',
+    demoMode: 'Demo Mode',
+    demoModeTitle: 'Preview the planner',
+    demoModeCopy: 'Click around freely. Sign up to sync and store your data in the beta.',
+    demoModeBanner: 'Demo mode · changes here are not saved to your account',
     connectedAccount: 'Connected account',
     enableCloudSync: 'Add Supabase env vars to enable cloud sync.',
     theme: 'Theme',
@@ -157,6 +177,7 @@ const UI_TEXT = {
     authCopy: 'Your tasks, notes, and weekly spreads will be stored in Supabase and tied to your account.',
     inviteOnlyAuthTitle: 'Invite-only beta access',
     inviteOnlyAuthCopy: 'Sign in with an approved Google account to open your planner. Unapproved accounts will be signed out automatically.',
+    inviteOnlyAuthContact: 'To participate in beta test contact alan@dautaln.com',
     email: 'Email',
     password: 'Password',
     working: 'Working...',
@@ -165,9 +186,10 @@ const UI_TEXT = {
     continueWithGoogle: 'Continue with Google',
     continueWithGithub: 'Continue with GitHub',
     inviteOnlyMessage: 'This beta is invite-only. Ask for access before signing in.',
+    browseDemo: 'Back to demo',
     signedInAs: (email: string) => `Signed in as ${email}.`,
     accountCreated: (email: string) => `Account created for ${email}. Check your email if confirmation is required.`,
-    task: 'Task',
+    task: 'Project',
     taskEnterHint: 'Open notes with Enter',
     notes: 'Notes',
     status: 'Status',
@@ -185,7 +207,9 @@ const UI_TEXT = {
     statusCritical: 'Critical',
     statusDone: 'Done',
     priorityApply: 'Apply',
+    applyShortcutHint: 'Apply with Cmd/Ctrl+Enter',
     time: 'Time',
+    timeSet: 'Set deadline time',
     customStatusTitle: 'Custom detail',
     customStatusPlaceholder: 'Enter a custom detail',
     customStatusSave: 'Save',
@@ -234,6 +258,10 @@ const UI_TEXT = {
     accountSettings: 'Аккаунт и настройки',
     cloudMode: 'Облако',
     localMode: 'Локально',
+    demoMode: 'Демо',
+    demoModeTitle: 'Просмотр планера',
+    demoModeCopy: 'Свободно изучайте интерфейс. Чтобы синхронизировать и сохранять данные, подайте заявку в бета-доступ.',
+    demoModeBanner: 'Демо-режим · изменения здесь не сохраняются в аккаунт',
     connectedAccount: 'Подключенный аккаунт',
     enableCloudSync: 'Добавьте переменные Supabase, чтобы включить облачную синхронизацию.',
     theme: 'Тема',
@@ -252,6 +280,7 @@ const UI_TEXT = {
     authCopy: 'Ваши задачи, заметки и недельные развороты будут храниться в Supabase и привязаны к аккаунту.',
     inviteOnlyAuthTitle: 'Бета-доступ по приглашению',
     inviteOnlyAuthCopy: 'Войдите через одобренный Google-аккаунт, чтобы открыть планер. Неодобренные аккаунты будут автоматически выходить из системы.',
+    inviteOnlyAuthContact: 'Чтобы участвовать в бета-тесте, напишите на alan@dautaln.com',
     email: 'Почта',
     password: 'Пароль',
     working: 'Загрузка...',
@@ -260,9 +289,10 @@ const UI_TEXT = {
     continueWithGoogle: 'Продолжить через Google',
     continueWithGithub: 'Продолжить через GitHub',
     inviteOnlyMessage: 'Это закрытая бета по приглашениям. Сначала добавьте почту в список доступа.',
+    browseDemo: 'Вернуться к демо',
     signedInAs: (email: string) => `Вы вошли как ${email}.`,
     accountCreated: (email: string) => `Аккаунт для ${email} создан. Проверьте почту, если требуется подтверждение.`,
-    task: 'Задача',
+    task: 'Проект',
     taskEnterHint: 'Открыть заметки через Enter',
     notes: 'Заметки',
     status: 'Статус',
@@ -280,7 +310,9 @@ const UI_TEXT = {
     statusCritical: 'Критично',
     statusDone: 'Сделано',
     priorityApply: 'Применить',
+    applyShortcutHint: 'Применить: Cmd/Ctrl+Enter',
     time: 'Время',
+    timeSet: 'Указать дедлайн',
     customStatusTitle: 'Своя деталь',
     customStatusPlaceholder: 'Введите свою деталь',
     customStatusSave: 'Сохранить',
@@ -352,15 +384,30 @@ function getStatusLabel(status: RowStatus, ui: UiText) {
 }
 
 function getCustomDetailValue(row: TaskRow) {
-  if (row.time.trim()) {
-    return row.time.trim();
-  }
-
   if (!isPresetStatus(row.status)) {
     return row.status.trim();
   }
 
   return '';
+}
+
+function normalizePriorityAndTime(status: RowStatus, time: string) {
+  const trimmedTime = time.trim();
+
+  // Older builds reused `time` to store custom priority/detail text. Migrate those
+  // legacy values into the flexible status slot, while keeping real HH:MM deadline
+  // values in `time`.
+  if (status === 'none' && trimmedTime && !/^\d{1,2}:\d{2}$/.test(trimmedTime)) {
+    return {
+      status: trimmedTime,
+      time: '',
+    };
+  }
+
+  return {
+    status,
+    time,
+  };
 }
 
 function sanitizeNoteHtml(html: string) {
@@ -448,6 +495,20 @@ function createEmptyRow(dayKey: string, index: number): TaskRow {
   };
 }
 
+function trimTrailingEmptyRows(dayKey: string, rows: TaskRow[]) {
+  const normalizedRows = Array.from({ length: rows.length }, (_, index) => rows[index] ?? createEmptyRow(dayKey, index));
+
+  while (normalizedRows.length > ROW_COUNT && isRowEmpty(normalizedRows[normalizedRows.length - 1])) {
+    normalizedRows.pop();
+  }
+
+  if (normalizedRows.length === 0) {
+    return createEmptyRows(dayKey);
+  }
+
+  return reindexRows(dayKey, normalizedRows);
+}
+
 function normalizeStatus(value: unknown, completed?: unknown): RowStatus {
   if (value === 'none' || value === 'low' || value === 'urgent' || value === 'critical' || value === 'done') {
     return value;
@@ -467,17 +528,21 @@ function normalizeStatus(value: unknown, completed?: unknown): RowStatus {
 function normalizeTaskRow(row: Partial<TaskRow> & { completed?: boolean }, dayKey: string, index: number): TaskRow {
   // Browser storage and Supabase can be on different schema versions, so every row is
   // normalized into the current in-memory shape before the UI touches it.
+  const normalizedStatus = normalizeStatus(row.status, row.completed);
+  const rawTime =
+    typeof row.time === 'string'
+      ? row.time
+      : typeof (row as Partial<TaskRecord>).task_time === 'string'
+        ? (row as Partial<TaskRecord>).task_time ?? ''
+        : '';
+  const normalizedPriorityAndTime = normalizePriorityAndTime(normalizedStatus, rawTime);
+
   return {
     id: typeof row.id === 'string' ? row.id : `${dayKey}-${index}`,
     title: typeof row.title === 'string' ? row.title : '',
     notes: typeof row.notes === 'string' ? row.notes : '',
-    status: normalizeStatus(row.status, row.completed),
-    time:
-      typeof row.time === 'string'
-        ? row.time
-        : typeof (row as Partial<TaskRecord>).task_time === 'string'
-          ? (row as Partial<TaskRecord>).task_time ?? ''
-          : '',
+    status: normalizedPriorityAndTime.status,
+    time: normalizedPriorityAndTime.time,
     detailColor:
       typeof (row as Partial<TaskRow>).detailColor === 'string'
         ? normalizeDetailColor((row as Partial<TaskRow>).detailColor)
@@ -493,7 +558,10 @@ function normalizeSavedWeeks(raw: Record<string, Record<string, Array<Partial<Ta
     normalized[weekKey] = {};
 
     for (const [dayKey, rows] of Object.entries(week)) {
-      normalized[weekKey][dayKey] = rows.map((row, index) => normalizeTaskRow(row, dayKey, index));
+      normalized[weekKey][dayKey] = trimTrailingEmptyRows(
+        dayKey,
+        rows.map((row, index) => normalizeTaskRow(row, dayKey, index)),
+      );
     }
   }
 
@@ -703,11 +771,14 @@ function mapRecordsToWeek(weekStart: Date, records: TaskRecord[]) {
       id: `${dayKey}-${record.row_index}`,
       title: record.title,
       notes: record.notes,
-      status: normalizeStatus(record.status),
-      time: record.task_time ?? '',
+      ...normalizePriorityAndTime(normalizeStatus(record.status), record.task_time ?? ''),
       detailColor: normalizeDetailColor(record.detail_color),
       priorityDismissed: false,
     };
+  }
+
+  for (const [dayKey, rows] of Object.entries(mapped)) {
+    mapped[dayKey] = trimTrailingEmptyRows(dayKey, rows);
   }
 
   return mapped;
@@ -899,6 +970,7 @@ function App() {
   const [savedWeeks, setSavedWeeks] = useState<Record<string, Record<string, TaskRow[]>>>({});
   const [activeNotesEditor, setActiveNotesEditor] = useState<ActiveNotesEditor | null>(null);
   const [activeStatusEditor, setActiveStatusEditor] = useState<ActiveStatusEditor | null>(null);
+  const [activeTimeEditor, setActiveTimeEditor] = useState<ActiveTimeEditor | null>(null);
   const [activePriorityPicker, setActivePriorityPicker] = useState<ActivePriorityPicker | null>(null);
   const [miscTasksByWeek, setMiscTasksByWeek] = useState<Record<string, MiscTask[]>>({});
   const [miscTaskInput, setMiscTaskInput] = useState('');
@@ -927,6 +999,7 @@ function App() {
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authMessage, setAuthMessage] = useState('');
+  const [showInviteOnlyAuth, setShowInviteOnlyAuth] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [isWeekLoading, setIsWeekLoading] = useState(false);
   const [showWeekLoadingBanner, setShowWeekLoadingBanner] = useState(false);
@@ -945,10 +1018,13 @@ function App() {
   const [plannerTitleOverride, setPlannerTitleOverride] = useState('');
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const previousWeekStartRef = useRef(weekStart);
+  const savedWeeksRef = useRef(savedWeeks);
   const queuedDaySyncsRef = useRef<Record<string, TaskRow[]>>({});
   const activeDaySyncsRef = useRef<Record<string, boolean>>({});
+  const pendingDaySyncTimeoutsRef = useRef<Record<string, number>>({});
   const saveStateTimeoutRef = useRef<number | null>(null);
   const weekMutationVersionRef = useRef<Record<string, number>>({});
+  const dirtyWeeksRef = useRef<Record<string, boolean>>({});
   const ui = UI_TEXT[language];
   const allowedEmails = useMemo(() => parseAllowedEmails(import.meta.env.VITE_ALLOWED_EMAILS), []);
   const isInviteOnlyBeta = allowedEmails.size > 0;
@@ -965,6 +1041,14 @@ function App() {
   const defaultPlannerTitle = useMemo(() => getPlannerTitle(user, language), [user, language]);
   const plannerTitle = plannerTitleOverride || defaultPlannerTitle;
   const miscTasks = miscTasksByWeek[weekKey] ?? [];
+  const accountModeLabel = user && isSupabaseConfigured ? ui.cloudMode : isSupabaseConfigured ? ui.demoMode : ui.localMode;
+  const accountPanelTitle = user ? userDisplayName : ui.demoModeTitle;
+  const accountPanelCopy = user
+    ? user.email ?? user.id ?? ui.connectedAccount
+    : isSupabaseConfigured
+      ? ui.demoModeCopy
+      : ui.enableCloudSync;
+  const accountAvatarInitials = user ? userInitials : 'DN';
 
   function clearSaveStateTimeout() {
     if (saveStateTimeoutRef.current !== null) {
@@ -985,20 +1069,43 @@ function App() {
   }
 
   function hasPendingDaySyncs() {
-    return Object.keys(queuedDaySyncsRef.current).length > 0 || Object.values(activeDaySyncsRef.current).some(Boolean);
+    return (
+      Object.keys(queuedDaySyncsRef.current).length > 0 ||
+      Object.keys(pendingDaySyncTimeoutsRef.current).length > 0 ||
+      Object.values(activeDaySyncsRef.current).some(Boolean)
+    );
   }
 
   function markWeekMutated(targetWeekKey: string) {
     weekMutationVersionRef.current[targetWeekKey] = (weekMutationVersionRef.current[targetWeekKey] ?? 0) + 1;
+    dirtyWeeksRef.current[targetWeekKey] = true;
+  }
+
+  function persistDirtyWeeks() {
+    window.localStorage.setItem(DIRTY_WEEKS_STORAGE_KEY, JSON.stringify(dirtyWeeksRef.current));
+  }
+
+  function clearWeekDirty(targetWeekKey: string) {
+    delete dirtyWeeksRef.current[targetWeekKey];
+  }
+
+  function isWeekDirty(targetWeekKey: string) {
+    return Boolean(dirtyWeeksRef.current[targetWeekKey]);
   }
 
   async function enforceInviteOnly(nextUser: User | null) {
     if (isAllowedBetaUser(nextUser, allowedEmails)) {
       setAuthMessage('');
+      if (nextUser) {
+        setShowInviteOnlyAuth(false);
+      }
       return nextUser;
     }
 
     setAuthMessage(ui.inviteOnlyMessage);
+    if (nextUser) {
+      setShowInviteOnlyAuth(true);
+    }
     setUser(null);
     await supabase?.auth.signOut();
     return null;
@@ -1007,6 +1114,10 @@ function App() {
   useEffect(() => {
     // Hydrate all local-only state first so the app is usable immediately, even before
     // Supabase auth or cloud reads have finished.
+    window.localStorage.removeItem(LEGACY_STORAGE_PREFIX);
+    window.localStorage.removeItem(LEGACY_MISC_STORAGE_PREFIX);
+    window.localStorage.removeItem(LEGACY_DIRTY_WEEKS_STORAGE_KEY);
+
     const raw = window.localStorage.getItem(STORAGE_PREFIX);
     if (raw) {
       try {
@@ -1030,6 +1141,15 @@ function App() {
     const rawPlannerTitle = window.localStorage.getItem(PLANNER_TITLE_STORAGE_KEY);
     if (rawPlannerTitle) {
       setPlannerTitleOverride(rawPlannerTitle);
+    }
+
+    const rawDirtyWeeks = window.localStorage.getItem(DIRTY_WEEKS_STORAGE_KEY);
+    if (rawDirtyWeeks) {
+      try {
+        dirtyWeeksRef.current = JSON.parse(rawDirtyWeeks) as Record<string, boolean>;
+      } catch {
+        window.localStorage.removeItem(DIRTY_WEEKS_STORAGE_KEY);
+      }
     }
 
     setHasHydratedLocalCache(true);
@@ -1072,6 +1192,10 @@ function App() {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    savedWeeksRef.current = savedWeeks;
+  }, [savedWeeks]);
 
   useEffect(() => {
     if (!hasHydratedLocalCache || !isSupabaseConfigured || !supabase || !user) {
@@ -1205,7 +1329,7 @@ function App() {
 
       if (error) {
         setStorageError(error.message);
-      } else if ((weekMutationVersionRef.current[weekKey] ?? 0) === requestMutationVersion) {
+      } else if (!isWeekDirty(weekKey) && (weekMutationVersionRef.current[weekKey] ?? 0) === requestMutationVersion) {
         setSavedWeeks((current) => ({
           ...current,
           [weekKey]: mergeLegacyDetailFields(
@@ -1296,7 +1420,10 @@ function App() {
   }, []);
 
   useEffect(() => {
-    return () => clearSaveStateTimeout();
+    return () => {
+      clearSaveStateTimeout();
+      Object.values(pendingDaySyncTimeoutsRef.current).forEach((timeout) => window.clearTimeout(timeout));
+    };
   }, []);
 
   useEffect(() => {
@@ -1444,6 +1571,8 @@ function App() {
     }
 
     if (didSave && !hasPendingDaySyncs()) {
+      clearWeekDirty(weekKey);
+      persistDirtyWeeks();
       markSavedState();
     }
   }
@@ -1455,7 +1584,16 @@ function App() {
 
     queuedDaySyncsRef.current[dayKey] = rows.map((row) => ({ ...row }));
     markSavingState();
-    void flushDaySync(dayKey);
+    persistDirtyWeeks();
+
+    if (pendingDaySyncTimeoutsRef.current[dayKey] !== undefined) {
+      window.clearTimeout(pendingDaySyncTimeoutsRef.current[dayKey]);
+    }
+
+    pendingDaySyncTimeoutsRef.current[dayKey] = window.setTimeout(() => {
+      delete pendingDaySyncTimeoutsRef.current[dayKey];
+      void flushDaySync(dayKey);
+    }, 450);
   }
 
   function addRow(dayKey: string) {
@@ -1492,12 +1630,7 @@ function App() {
     }
 
     const filteredRows = currentRows.filter((row) => row.id !== rowId);
-    const remainingRows = filteredRows.map((row, index) => ({
-      ...createEmptyRow(dayKey, index),
-      title: row.title,
-      notes: row.notes,
-      status: row.status,
-    }));
+    const remainingRows = trimTrailingEmptyRows(dayKey, filteredRows);
 
     setSavedWeeks((current) => {
       const week = current[weekKey] ?? {};
@@ -1522,44 +1655,80 @@ function App() {
     updateRowFields(dayKey, rowId, { [field]: value } as Partial<TaskRow>);
   }
 
+  function updateTaskTitle(dayKey: string, rowId: string, nextTitle: string) {
+    const currentWeek = savedWeeksRef.current[weekKey] ?? {};
+    const currentRows = currentWeek[dayKey] ?? createEmptyRows(dayKey);
+    const row = currentRows.find((candidate) => candidate.id === rowId);
+
+    if (!row) {
+      return;
+    }
+
+    const wasEmpty = row.title.trim() === '';
+    const isNowFilled = nextTitle.trim() !== '';
+    const isNowCleared = nextTitle.trim() === '';
+
+    if (wasEmpty && isNowFilled) {
+      updateRowFields(dayKey, rowId, {
+        title: nextTitle,
+        notes: '',
+        status: 'none',
+        time: '',
+        detailColor: 'default',
+        priorityDismissed: false,
+      });
+      return;
+    }
+
+    if (isNowCleared) {
+      updateRowFields(dayKey, rowId, {
+        title: nextTitle,
+        notes: '',
+        status: 'none',
+        time: '',
+        detailColor: 'default',
+        priorityDismissed: false,
+      });
+      return;
+    }
+
+    updateRow(dayKey, rowId, 'title', nextTitle);
+  }
+
   function updateRowFields(dayKey: string, rowId: string, fields: Partial<TaskRow>) {
-    let nextRowsSnapshot: TaskRow[] | null = null;
-    let updatedRow: TaskRow | null = null;
+    const currentWeekState = savedWeeksRef.current[weekKey] ?? {};
+    const currentRowsState = currentWeekState[dayKey] ?? createEmptyRows(dayKey);
+    const existingRow = currentRowsState.find((row) => row.id === rowId);
+
+    if (!existingRow) {
+      return;
+    }
+
+    const updatedRow: TaskRow = {
+      ...existingRow,
+      ...fields,
+    };
+
+    const nextRowsSnapshot = trimTrailingEmptyRows(
+      dayKey,
+      currentRowsState.map((row) => (row.id === rowId ? updatedRow : row)),
+    );
+    const nextWeekState = {
+      ...currentWeekState,
+      [dayKey]: nextRowsSnapshot,
+    };
+    const nextState = {
+      ...savedWeeksRef.current,
+      [weekKey]: nextWeekState,
+    };
+
     markWeekMutated(weekKey);
 
-    setSavedWeeks((current) => {
-      const currentWeekState = current[weekKey] ?? {};
-      const currentRowsState = currentWeekState[dayKey] ?? createEmptyRows(dayKey);
-      const existingRow = currentRowsState.find((row) => row.id === rowId);
+    savedWeeksRef.current = nextState;
+    setSavedWeeks(nextState);
+    window.localStorage.setItem(STORAGE_PREFIX, JSON.stringify(nextState));
 
-      if (!existingRow) {
-        return current;
-      }
-
-      // Apply multiple field changes atomically so one UI action cannot overwrite
-      // itself with stale row snapshots.
-      updatedRow = {
-        ...existingRow,
-        ...fields,
-      };
-
-      const nextRows = currentRowsState.map((row) => (row.id === rowId ? (updatedRow as TaskRow) : row));
-      nextRowsSnapshot = nextRows;
-
-      const nextState = {
-        ...current,
-        [weekKey]: {
-          ...currentWeekState,
-          [dayKey]: nextRows,
-        },
-      };
-
-      window.localStorage.setItem(STORAGE_PREFIX, JSON.stringify(nextState));
-
-      return nextState;
-    });
-
-    if (supabase && user && nextRowsSnapshot) {
+    if (supabase && user) {
       queueDaySync(dayKey, nextRowsSnapshot);
     }
   }
@@ -1570,6 +1739,10 @@ function App() {
       rowId: row.id,
       taskTitle: row.title,
       notes: sanitizeNoteHtml(row.notes),
+      status: row.status,
+      time: row.time,
+      detailColor: row.detailColor,
+      priorityDismissed: row.priorityDismissed,
     });
   }
 
@@ -1579,6 +1752,18 @@ function App() {
 
   function closeStatusEditor() {
     setActiveStatusEditor(null);
+  }
+
+  function openTimeEditor(dayKey: string, row: TaskRow) {
+    setActiveTimeEditor({
+      dayKey,
+      rowId: row.id,
+      time: row.time,
+    });
+  }
+
+  function closeTimeEditor() {
+    setActiveTimeEditor(null);
   }
 
   function openPriorityPicker(dayKey: string, row: TaskRow) {
@@ -1620,27 +1805,21 @@ function App() {
     }
 
     updateRowFields(activeStatusEditor.dayKey, activeStatusEditor.rowId, {
-      status: 'none',
-      time: trimmed,
+      status: trimmed,
       detailColor: color,
       priorityDismissed: false,
     });
+    setActiveNotesEditor((current) =>
+      current && current.dayKey === activeStatusEditor.dayKey && current.rowId === activeStatusEditor.rowId
+        ? {
+            ...current,
+            status: trimmed,
+            detailColor: color,
+            priorityDismissed: false,
+          }
+        : current,
+    );
     setActiveStatusEditor(null);
-  }
-
-  function selectPriorityOption(option: (typeof PRESET_PRIORITY_OPTIONS)[number]) {
-    if (!activePriorityPicker) {
-      return;
-    }
-
-    // Explicitly choosing `none` is different from "priority has never been set":
-    // it hides the inline prompt until the user hovers the cell again.
-    updateRowFields(activePriorityPicker.dayKey, activePriorityPicker.rowId, {
-      time: '',
-      status: option,
-      priorityDismissed: option === 'none',
-    });
-    setActivePriorityPicker(null);
   }
 
   function openCustomFromPriorityPicker() {
@@ -1656,6 +1835,27 @@ function App() {
     });
     setActivePriorityPicker(null);
   }
+
+  function saveTimeValue(value: string) {
+    if (!activeTimeEditor) {
+      return;
+    }
+
+    const trimmed = value.trim().slice(0, 10);
+    updateRowFields(activeTimeEditor.dayKey, activeTimeEditor.rowId, {
+      time: trimmed,
+    });
+    setActiveNotesEditor((current) =>
+      current && current.dayKey === activeTimeEditor.dayKey && current.rowId === activeTimeEditor.rowId
+        ? {
+            ...current,
+            time: trimmed,
+          }
+        : current,
+    );
+    setActiveTimeEditor(null);
+  }
+
 
   function addMiscTask() {
     const trimmed = miscTaskInput.trim();
@@ -1873,9 +2073,10 @@ function App() {
     await supabase.auth.signOut();
     setSavedWeeks({});
     setAuthMessage('');
+    setShowInviteOnlyAuth(false);
   }
 
-  if (isSupabaseConfigured && !user) {
+  if (isSupabaseConfigured && !user && showInviteOnlyAuth) {
     return (
       <AuthScreen
         authEmail={authEmail}
@@ -1888,6 +2089,7 @@ function App() {
         onPasswordChange={setAuthPassword}
         onSignIn={signInWithPassword}
         onOAuth={(provider) => void signInWithProvider(provider)}
+        onBack={() => setShowInviteOnlyAuth(false)}
       />
     );
   }
@@ -1914,6 +2116,7 @@ function App() {
                   placeholder={defaultPlannerTitle}
                   aria-label={ui.weeklyPlanner}
                 />
+                {isSupabaseConfigured && !user ? <p className="top-toolbar-demo-badge">{ui.demoModeBanner}</p> : null}
                 <p className="top-toolbar-range">{topBarRange}</p>
               </div>
             </div>
@@ -1924,6 +2127,12 @@ function App() {
               <span className={`save-indicator save-indicator-${saveState}`}>
                 {saveState === 'saving' ? ui.savingStatus : ui.savedStatus}
               </span>
+            ) : null}
+
+            {isSupabaseConfigured && !user ? (
+              <button type="button" className="nav-button nav-button-primary demo-signup-button" onClick={() => setShowInviteOnlyAuth(true)}>
+                {ui.signUp}
+              </button>
             ) : null}
 
             <button type="button" className="nav-button" onClick={() => setIsCalendarOpen(true)}>
@@ -1971,23 +2180,19 @@ function App() {
                 aria-label={ui.openAccount}
                 aria-expanded={isAccountMenuOpen}
               >
-                <span>{userInitials}</span>
+                <span>{accountAvatarInitials}</span>
               </button>
 
               {isAccountMenuOpen ? (
                 <div className="account-menu-panel" role="menu" aria-label={ui.accountSettings}>
                   <div className="account-menu-header">
                     <div className="account-menu-avatar">
-                      <span>{userInitials}</span>
+                      <span>{accountAvatarInitials}</span>
                     </div>
                     <div>
-                      <p className="account-menu-label">{isSupabaseConfigured ? ui.cloudMode : ui.localMode}</p>
-                      <p className="account-menu-title">{userDisplayName}</p>
-                      <p className="account-menu-copy">
-                        {isSupabaseConfigured
-                          ? user?.email ?? user?.id ?? ui.connectedAccount
-                          : ui.enableCloudSync}
-                      </p>
+                      <p className="account-menu-label">{accountModeLabel}</p>
+                      <p className="account-menu-title">{accountPanelTitle}</p>
+                      <p className="account-menu-copy">{accountPanelCopy}</p>
                     </div>
                   </div>
 
@@ -2019,6 +2224,19 @@ function App() {
                     <div className="account-menu-section">
                       <button type="button" className="nav-button account-menu-action" onClick={signOut}>
                         {ui.signOut}
+                      </button>
+                    </div>
+                  ) : isSupabaseConfigured ? (
+                    <div className="account-menu-section">
+                      <button
+                        type="button"
+                        className="nav-button nav-button-primary account-menu-action"
+                        onClick={() => {
+                          setIsAccountMenuOpen(false);
+                          setShowInviteOnlyAuth(true);
+                        }}
+                      >
+                        {ui.signUp}
                       </button>
                     </div>
                   ) : null}
@@ -2089,14 +2307,12 @@ function App() {
               <PageSheet
                 headerLabel={formatSheetRange(outgoingLeftPage, language)}
                 days={outgoingLeftPage}
+                onUpdateTaskTitle={updateTaskTitle}
                 ui={ui}
-                onUpdateRow={updateRow}
-                onUpdateRowFields={updateRowFields}
                 onAddRow={addRow}
                 onDeleteRow={deleteRow}
                 onMoveTaskRow={moveTaskRow}
                 onOpenNotes={openNotesEditor}
-                onOpenPriorityPicker={openPriorityPicker}
                 onAssignMiscTask={assignMiscTaskToRow}
                 draggedMiscTaskId={draggedMiscTaskId}
                 draggedTaskRow={draggedTaskRow}
@@ -2107,14 +2323,12 @@ function App() {
               <PageSheet
                 headerLabel={formatSheetRange(outgoingRightPage, language)}
                 days={outgoingRightPage}
+                onUpdateTaskTitle={updateTaskTitle}
                 ui={ui}
-                onUpdateRow={updateRow}
-                onUpdateRowFields={updateRowFields}
                 onAddRow={addRow}
                 onDeleteRow={deleteRow}
                 onMoveTaskRow={moveTaskRow}
                 onOpenNotes={openNotesEditor}
-                onOpenPriorityPicker={openPriorityPicker}
                 onAssignMiscTask={assignMiscTaskToRow}
                 draggedMiscTaskId={draggedMiscTaskId}
                 draggedTaskRow={draggedTaskRow}
@@ -2129,14 +2343,12 @@ function App() {
             <PageSheet
               headerLabel={formatSheetRange(leftPage, language)}
               days={leftPage}
+              onUpdateTaskTitle={updateTaskTitle}
               ui={ui}
-              onUpdateRow={updateRow}
-              onUpdateRowFields={updateRowFields}
               onAddRow={addRow}
               onDeleteRow={deleteRow}
               onMoveTaskRow={moveTaskRow}
               onOpenNotes={openNotesEditor}
-              onOpenPriorityPicker={openPriorityPicker}
               onAssignMiscTask={assignMiscTaskToRow}
               draggedMiscTaskId={draggedMiscTaskId}
               draggedTaskRow={draggedTaskRow}
@@ -2147,14 +2359,12 @@ function App() {
             <PageSheet
               headerLabel={formatSheetRange(rightPage, language)}
               days={rightPage}
+              onUpdateTaskTitle={updateTaskTitle}
               ui={ui}
-              onUpdateRow={updateRow}
-              onUpdateRowFields={updateRowFields}
               onAddRow={addRow}
               onDeleteRow={deleteRow}
               onMoveTaskRow={moveTaskRow}
               onOpenNotes={openNotesEditor}
-              onOpenPriorityPicker={openPriorityPicker}
               onAssignMiscTask={assignMiscTaskToRow}
               draggedMiscTaskId={draggedMiscTaskId}
               draggedTaskRow={draggedTaskRow}
@@ -2224,6 +2434,29 @@ function App() {
           onClose={closeNotesEditor}
           onChangeTaskTitle={updateActiveTaskTitle}
           onChangeNotes={updateActiveNotes}
+          onOpenPriority={() =>
+            openPriorityPicker(activeNotesEditor.dayKey, {
+              id: activeNotesEditor.rowId,
+              title: activeNotesEditor.taskTitle,
+              notes: activeNotesEditor.notes,
+              status: activeNotesEditor.status,
+              time: activeNotesEditor.time,
+              detailColor: activeNotesEditor.detailColor,
+              priorityDismissed: activeNotesEditor.priorityDismissed,
+            })
+          }
+          onOpenTime={() =>
+            openTimeEditor(activeNotesEditor.dayKey, {
+              id: activeNotesEditor.rowId,
+              title: activeNotesEditor.taskTitle,
+              notes: activeNotesEditor.notes,
+              status: activeNotesEditor.status,
+              time: activeNotesEditor.time,
+              detailColor: activeNotesEditor.detailColor,
+              priorityDismissed: activeNotesEditor.priorityDismissed,
+            })
+          }
+          isSubdialogOpen={Boolean(activePriorityPicker || activeStatusEditor || activeTimeEditor)}
         />
       ) : null}
 
@@ -2241,8 +2474,32 @@ function App() {
           ui={ui}
           activePriorityPicker={activePriorityPicker}
           onClose={closePriorityPicker}
-          onSelect={selectPriorityOption}
+          onApply={(option) => {
+            updateRowFields(activePriorityPicker.dayKey, activePriorityPicker.rowId, {
+              status: option,
+              priorityDismissed: option === 'none',
+            });
+            setActiveNotesEditor((current) =>
+              current && current.dayKey === activePriorityPicker.dayKey && current.rowId === activePriorityPicker.rowId
+                ? {
+                    ...current,
+                    status: option,
+                    priorityDismissed: option === 'none',
+                  }
+                : current,
+            );
+            closePriorityPicker();
+          }}
           onCustom={openCustomFromPriorityPicker}
+        />
+      ) : null}
+
+      {activeTimeEditor ? (
+        <TimeDialog
+          ui={ui}
+          activeTimeEditor={activeTimeEditor}
+          onClose={closeTimeEditor}
+          onSave={saveTimeValue}
         />
       ) : null}
 
@@ -2275,6 +2532,7 @@ type AuthScreenProps = {
   onPasswordChange: (value: string) => void;
   onSignIn: () => void;
   onOAuth: (provider: 'google' | 'github') => void;
+  onBack: () => void;
 };
 
 function AuthScreen({
@@ -2288,6 +2546,7 @@ function AuthScreen({
   onPasswordChange,
   onSignIn,
   onOAuth,
+  onBack,
 }: AuthScreenProps) {
   return (
     <div className="auth-page">
@@ -2295,6 +2554,7 @@ function AuthScreen({
         <p className="storage-label">{ui.appName}</p>
         <h1 className="auth-title">{isInviteOnlyBeta ? ui.inviteOnlyAuthTitle : ui.authTitle}</h1>
         <p className="auth-copy">{isInviteOnlyBeta ? ui.inviteOnlyAuthCopy : ui.authCopy}</p>
+        {isInviteOnlyBeta ? <p className="auth-copy auth-copy-detail">{ui.inviteOnlyAuthContact}</p> : null}
 
         <div className="oauth-group oauth-group-vertical auth-oauth-primary">
           <button type="button" className="nav-button nav-button-primary auth-google-button" onClick={() => onOAuth('google')}>
@@ -2331,6 +2591,10 @@ function AuthScreen({
         )}
 
         {authMessage ? <p className="status-banner auth-status">{authMessage}</p> : null}
+
+        <button type="button" className="nav-button auth-back-button" onClick={onBack}>
+          {ui.browseDemo}
+        </button>
       </section>
     </div>
   );
@@ -2339,14 +2603,12 @@ function AuthScreen({
 type PageSheetProps = {
   headerLabel: string;
   days: DayData[];
+  onUpdateTaskTitle: (dayKey: string, rowId: string, nextTitle: string) => void;
   ui: UiText;
-  onUpdateRow: (dayKey: string, rowId: string, field: keyof TaskRow, value: string) => void;
-  onUpdateRowFields: (dayKey: string, rowId: string, fields: Partial<TaskRow>) => void;
   onAddRow: (dayKey: string) => void;
   onDeleteRow: (dayKey: string, rowId: string) => void;
   onMoveTaskRow: (sourceDayKey: string, sourceRowId: string, targetDayKey: string, targetRowId: string) => void;
   onOpenNotes: (dayKey: string, row: TaskRow) => void;
-  onOpenPriorityPicker: (dayKey: string, row: TaskRow) => void;
   onAssignMiscTask: (dayKey: string, rowId: string, taskId: string) => void;
   draggedMiscTaskId: string | null;
   draggedTaskRow: DraggedTaskRow | null;
@@ -2358,14 +2620,12 @@ type PageSheetProps = {
 function PageSheet({
   headerLabel,
   days,
+  onUpdateTaskTitle,
   ui,
-  onUpdateRow,
-  onUpdateRowFields,
   onAddRow,
   onDeleteRow,
   onMoveTaskRow,
   onOpenNotes,
-  onOpenPriorityPicker,
   onAssignMiscTask,
   draggedMiscTaskId,
   draggedTaskRow,
@@ -2386,14 +2646,12 @@ function PageSheet({
           <DaySection
             key={day.key}
             day={day}
+            onUpdateTaskTitle={onUpdateTaskTitle}
             ui={ui}
-            onUpdateRow={onUpdateRow}
-            onUpdateRowFields={onUpdateRowFields}
             onAddRow={onAddRow}
             onDeleteRow={onDeleteRow}
             onMoveTaskRow={onMoveTaskRow}
             onOpenNotes={onOpenNotes}
-            onOpenPriorityPicker={onOpenPriorityPicker}
             onAssignMiscTask={onAssignMiscTask}
             draggedMiscTaskId={draggedMiscTaskId}
             draggedTaskRow={draggedTaskRow}
@@ -2409,14 +2667,12 @@ function PageSheet({
 
 type DaySectionProps = {
   day: DayData;
+  onUpdateTaskTitle: (dayKey: string, rowId: string, nextTitle: string) => void;
   ui: UiText;
-  onUpdateRow: (dayKey: string, rowId: string, field: keyof TaskRow, value: string) => void;
-  onUpdateRowFields: (dayKey: string, rowId: string, fields: Partial<TaskRow>) => void;
   onAddRow: (dayKey: string) => void;
   onDeleteRow: (dayKey: string, rowId: string) => void;
   onMoveTaskRow: (sourceDayKey: string, sourceRowId: string, targetDayKey: string, targetRowId: string) => void;
   onOpenNotes: (dayKey: string, row: TaskRow) => void;
-  onOpenPriorityPicker: (dayKey: string, row: TaskRow) => void;
   onAssignMiscTask: (dayKey: string, rowId: string, taskId: string) => void;
   draggedMiscTaskId: string | null;
   draggedTaskRow: DraggedTaskRow | null;
@@ -2427,14 +2683,12 @@ type DaySectionProps = {
 
 function DaySection({
   day,
+  onUpdateTaskTitle,
   ui,
-  onUpdateRow,
-  onUpdateRowFields,
   onAddRow,
   onDeleteRow,
   onMoveTaskRow,
   onOpenNotes,
-  onOpenPriorityPicker,
   onAssignMiscTask,
   draggedMiscTaskId,
   draggedTaskRow,
@@ -2445,6 +2699,11 @@ function DaySection({
   const dateKey = day.key.split('-').slice(1).join('-');
   const dayNumber = new Date(`${dateKey}T00:00:00`).getDate();
   const hasReachedRowLimit = day.rows.length >= MAX_ROW_COUNT;
+  const baselineVisualRows = 6;
+  const baselineRowHeight = 40;
+  const condensedRowCount = Math.min(Math.max(day.rows.length, 1), baselineVisualRows);
+  const rowTrackHeight = (baselineRowHeight * baselineVisualRows) / condensedRowCount;
+  const gridBodyHeight = rowTrackHeight * day.rows.length;
   const [dragTargetRowId, setDragTargetRowId] = useState<string | null>(null);
   const [dragTargetKind, setDragTargetKind] = useState<'misc' | 'task' | null>(null);
 
@@ -2464,12 +2723,20 @@ function DaySection({
         </div>
       </div>
 
-      <div className="task-grid day-grid">
+      <div
+        className="task-grid day-grid"
+        style={
+          {
+            '--visible-row-count': day.rows.length,
+            '--grid-body-height': `${gridBodyHeight}px`,
+            '--row-track-height': `${rowTrackHeight}px`,
+          } as CSSProperties
+        }
+      >
         <div className={`task-grid-head task-grid-row ${isActive ? 'is-active' : ''}`}>
           <span>#</span>
           <span>{ui.task}</span>
           <span>{ui.notes}</span>
-          <span>{ui.statusSortLabel}</span>
         </div>
 
         {day.rows.map((row, index) => (
@@ -2521,7 +2788,13 @@ function DaySection({
             <div
               className={`row-number row-number-cell ${index === day.rows.length - 1 ? 'is-row-actions' : ''} ${
                 !isRowEmpty(row) ? 'is-draggable' : ''
-              } ${draggedTaskRow?.rowId === row.id ? 'is-drag-source' : ''}`}
+              } ${draggedTaskRow?.rowId === row.id ? 'is-drag-source' : ''} ${
+                getCustomDetailValue(row)
+                  ? `row-number-detail-${row.detailColor}`
+                  : row.status !== 'none'
+                    ? `row-number-status-${row.status}`
+                    : ''
+              }`}
               draggable={!isRowEmpty(row)}
               onDragStart={(event) => {
                 if (isRowEmpty(row)) {
@@ -2566,41 +2839,17 @@ function DaySection({
                 className={`cell-input ${row.status === 'done' ? 'is-complete' : ''}`}
                 value={row.title}
                 onChange={(event) => {
-                  const nextTitle = event.target.value;
-                  const wasEmpty = row.title.trim() === '';
-                  const isNowFilled = nextTitle.trim() !== '';
-                  const isNowCleared = nextTitle.trim() === '';
-
-                  if (wasEmpty && isNowFilled) {
-                    onUpdateRowFields(day.key, row.id, {
-                      title: nextTitle,
-                      notes: '',
-                      status: 'none',
-                      time: '',
-                      detailColor: 'default',
-                      priorityDismissed: false,
-                    });
-                    return;
-                  }
-
-                  if (isNowCleared) {
-                    onUpdateRowFields(day.key, row.id, {
-                      title: nextTitle,
-                      notes: '',
-                      status: 'none',
-                      time: '',
-                      detailColor: 'default',
-                      priorityDismissed: false,
-                    });
-                    return;
-                  }
-
-                  onUpdateRow(day.key, row.id, 'title', nextTitle);
+                  onUpdateTaskTitle(day.key, row.id, event.target.value);
                 }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') {
                     event.preventDefault();
-                    onOpenNotes(day.key, row);
+                    const nextTitle = event.currentTarget.value;
+                    onUpdateTaskTitle(day.key, row.id, nextTitle);
+                    onOpenNotes(day.key, {
+                      ...row,
+                      title: nextTitle,
+                    });
                   }
                 }}
               />
@@ -2618,37 +2867,6 @@ function DaySection({
             >
               <span className="notes-preview">{getNotePreview(row.notes)}</span>
             </button>
-            <div className="status-cell">
-              {row.title.trim() ? (
-                (() => {
-                  const customDetail = getCustomDetailValue(row);
-                  const hasVisiblePriority = Boolean(customDetail || row.status !== 'none');
-                  const shouldRevealPrompt = !hasVisiblePriority && !row.priorityDismissed;
-
-                  return (
-                    <button
-                      type="button"
-                      className={`priority-trigger ${
-                        hasVisiblePriority
-                          ? customDetail
-                            ? `detail-${row.detailColor}`
-                            : `status-${row.status}`
-                          : shouldRevealPrompt
-                            ? 'status-none'
-                            : 'is-empty-priority'
-                      }`}
-                      onClick={() => onOpenPriorityPicker(day.key, row)}
-                      aria-haspopup="dialog"
-                      aria-label={`${ui.statusSortLabel}: ${hasVisiblePriority || shouldRevealPrompt ? customDetail || getStatusLabel(row.status, ui) : ui.statusSet}`}
-                    >
-                      {hasVisiblePriority || shouldRevealPrompt ? customDetail || getStatusLabel(row.status, ui) : ui.statusSet}
-                    </button>
-                  );
-                })()
-              ) : (
-                <span className="status-empty" aria-hidden="true" />
-              )}
-            </div>
           </div>
         ))}
       </div>
@@ -2662,6 +2880,9 @@ type NotesDialogProps = {
   onClose: () => void;
   onChangeTaskTitle: (title: string) => void;
   onChangeNotes: (notes: string) => void;
+  onOpenPriority: () => void;
+  onOpenTime: () => void;
+  isSubdialogOpen: boolean;
 };
 
 type CustomStatusDialogProps = {
@@ -2675,8 +2896,15 @@ type PriorityDialogProps = {
   activePriorityPicker: ActivePriorityPicker;
   ui: UiText;
   onClose: () => void;
-  onSelect: (option: (typeof PRESET_PRIORITY_OPTIONS)[number]) => void;
+  onApply: (option: (typeof PRESET_PRIORITY_OPTIONS)[number]) => void;
   onCustom: () => void;
+};
+
+type TimeDialogProps = {
+  activeTimeEditor: ActiveTimeEditor;
+  ui: UiText;
+  onClose: () => void;
+  onSave: (value: string) => void;
 };
 
 type CalendarNavigatorProps = {
@@ -2760,6 +2988,7 @@ function CustomStatusDialog({ activeStatusEditor, ui, onClose, onSave }: CustomS
         </div>
 
         <div className="meta-dialog-actions">
+          <p className="meta-dialog-hint">{ui.applyShortcutHint}</p>
           <button type="button" className="nav-button" onClick={onClose}>
             {ui.customStatusCancel}
           </button>
@@ -2772,7 +3001,7 @@ function CustomStatusDialog({ activeStatusEditor, ui, onClose, onSave }: CustomS
   );
 }
 
-function PriorityDialog({ activePriorityPicker, ui, onClose, onSelect, onCustom }: PriorityDialogProps) {
+function PriorityDialog({ activePriorityPicker, ui, onClose, onApply, onCustom }: PriorityDialogProps) {
   const initialSelection = PRESET_PRIORITY_OPTIONS.includes(activePriorityPicker.value as (typeof PRESET_PRIORITY_OPTIONS)[number])
     ? (activePriorityPicker.value as (typeof PRESET_PRIORITY_OPTIONS)[number])
     : null;
@@ -2796,15 +3025,13 @@ function PriorityDialog({ activePriorityPicker, ui, onClose, onSelect, onCustom 
 
       if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && selectedOption) {
         event.preventDefault();
-        onSelect(selectedOption);
+        onApply(selectedOption);
       }
     }
 
     document.addEventListener('keydown', handleKeydown);
     return () => document.removeEventListener('keydown', handleKeydown);
-  }, [onClose, onSelect, selectedOption]);
-
-  const currentValue = activePriorityPicker.value === 'none' ? ui.statusSet : activePriorityPicker.value;
+  }, [onApply, onClose, selectedOption]);
 
   return (
     <div className="dialog-backdrop" role="presentation">
@@ -2813,7 +3040,7 @@ function PriorityDialog({ activePriorityPicker, ui, onClose, onSelect, onCustom 
           <div>
             <p className="dialog-label">{ui.statusSortLabel}</p>
             <h2 id="priority-dialog-title" className="dialog-title">
-              {currentValue}
+              {ui.statusSortLabel}
             </h2>
           </div>
           <button type="button" className="notes-dialog-close" onClick={onClose} aria-label={ui.close}>
@@ -2848,10 +3075,11 @@ function PriorityDialog({ activePriorityPicker, ui, onClose, onSelect, onCustom 
         </div>
 
         <div className="meta-dialog-actions">
+          <p className="meta-dialog-hint">{ui.applyShortcutHint}</p>
           <button type="button" className="nav-button" onClick={onClose}>
             {ui.customStatusCancel}
           </button>
-          <button type="button" className="nav-button" onClick={() => selectedOption && onSelect(selectedOption)} disabled={!selectedOption}>
+          <button type="button" className="nav-button" onClick={() => selectedOption && onApply(selectedOption)} disabled={!selectedOption}>
             {ui.priorityApply}
           </button>
         </div>
@@ -2860,7 +3088,75 @@ function PriorityDialog({ activePriorityPicker, ui, onClose, onSelect, onCustom 
   );
 }
 
-function NotesDialog({ activeNotesEditor, ui, onClose, onChangeTaskTitle, onChangeNotes }: NotesDialogProps) {
+function TimeDialog({ activeTimeEditor, ui, onClose, onSave }: TimeDialogProps) {
+  const [value, setValue] = useState(activeTimeEditor.time);
+
+  useEffect(() => {
+    setValue(activeTimeEditor.time);
+  }, [activeTimeEditor]);
+
+  useEffect(() => {
+    function handleKeydown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        onSave(value);
+      }
+    }
+
+    document.addEventListener('keydown', handleKeydown);
+    return () => document.removeEventListener('keydown', handleKeydown);
+  }, [onClose, onSave, value]);
+
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section className="meta-dialog" role="dialog" aria-modal="true" aria-labelledby="time-dialog-title">
+        <div className="meta-dialog-header">
+          <div>
+            <p className="dialog-label">{ui.time}</p>
+            <h2 id="time-dialog-title" className="dialog-title">
+              {ui.timeTitle}
+            </h2>
+          </div>
+          <button type="button" className="notes-dialog-close" onClick={onClose} aria-label={ui.close}>
+            ×
+          </button>
+        </div>
+
+        <input
+          className="meta-dialog-input"
+          value={value}
+          onChange={(event) => setValue(event.target.value.slice(0, 10))}
+          placeholder="HH:MM"
+          inputMode="numeric"
+          spellCheck={false}
+          autoFocus
+        />
+
+        <div className="meta-dialog-actions">
+          <p className="meta-dialog-hint">{ui.applyShortcutHint}</p>
+          <button type="button" className="nav-button" onClick={onClose}>
+            {ui.customStatusCancel}
+          </button>
+          <button type="button" className="nav-button" onClick={() => onSave('')}>
+            {ui.timeClear}
+          </button>
+          <button type="button" className="nav-button" onClick={() => onSave(value)}>
+            {ui.timeSave}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function NotesDialog({ activeNotesEditor, ui, onClose, onChangeTaskTitle, onChangeNotes, onOpenPriority, onOpenTime, isSubdialogOpen }: NotesDialogProps) {
+  const dialogRef = useRef<HTMLElement | null>(null);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const [activeFormats, setActiveFormats] = useState({
     bold: false,
@@ -2874,6 +3170,26 @@ function NotesDialog({ activeNotesEditor, ui, onClose, onChangeTaskTitle, onChan
     if (editorRef.current && editorRef.current.innerHTML !== sanitizedNotes) {
       editorRef.current.innerHTML = sanitizedNotes;
     }
+  }, [activeNotesEditor]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const editor = editorRef.current;
+      if (!editor) {
+        return;
+      }
+
+      editor.focus();
+
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(editor);
+      range.collapse(false);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
   }, [activeNotesEditor]);
 
   useEffect(() => {
@@ -2923,6 +3239,13 @@ function NotesDialog({ activeNotesEditor, ui, onClose, onChangeTaskTitle, onChan
 
   useEffect(() => {
     function handleKeydown(event: KeyboardEvent) {
+      const dialog = dialogRef.current;
+      const editor = editorRef.current;
+
+      if (isSubdialogOpen) {
+        return;
+      }
+
       if (event.key === 'Escape') {
         event.preventDefault();
         onClose();
@@ -2932,12 +3255,51 @@ function NotesDialog({ activeNotesEditor, ui, onClose, onChangeTaskTitle, onChan
       if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         onClose();
+        return;
+      }
+
+      if (event.key === 'Tab' && dialog) {
+        if (document.activeElement === editor && editor) {
+          event.preventDefault();
+          insertEditorText('\u00A0\u00A0\u00A0\u00A0');
+          return;
+        }
+
+        const focusable = Array.from(
+          dialog.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), input:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])',
+          ),
+        ).filter((element) => !element.hasAttribute('disabled') && element.tabIndex !== -1);
+
+        if (focusable.length === 0) {
+          return;
+        }
+
+        const active = document.activeElement as HTMLElement | null;
+        const currentIndex = active ? focusable.indexOf(active) : -1;
+
+        if (!active || !dialog.contains(active)) {
+          event.preventDefault();
+          focusable[0].focus();
+          return;
+        }
+        
+        event.preventDefault();
+
+        if (currentIndex === -1) {
+          focusable[0].focus();
+          return;
+        }
+
+        const direction = event.shiftKey ? -1 : 1;
+        const nextIndex = (currentIndex + direction + focusable.length) % focusable.length;
+        focusable[nextIndex].focus();
       }
     }
 
     document.addEventListener('keydown', handleKeydown);
     return () => document.removeEventListener('keydown', handleKeydown);
-  }, [onClose]);
+  }, [isSubdialogOpen, onChangeNotes, onClose]);
 
   function exec(command: string, value?: string) {
     document.execCommand(command, false, value);
@@ -2951,9 +3313,54 @@ function NotesDialog({ activeNotesEditor, ui, onClose, onChangeTaskTitle, onChan
     }
   }
 
+  function insertEditorText(text: string) {
+    const editor = editorRef.current;
+    const selection = window.getSelection();
+
+    if (!editor || !selection || selection.rangeCount === 0) {
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) {
+      return;
+    }
+
+    range.deleteContents();
+    const textNode = document.createTextNode(text);
+    range.insertNode(textNode);
+    range.setStartAfter(textNode);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    const sanitizedNotes = sanitizeNoteHtml(editor.innerHTML);
+    if (editor.innerHTML !== sanitizedNotes) {
+      editor.innerHTML = sanitizedNotes;
+    }
+    onChangeNotes(sanitizedNotes);
+    editor.focus();
+  }
+
+  const customDetail = !isPresetStatus(activeNotesEditor.status) ? activeNotesEditor.status.trim() : '';
+  const hasVisiblePriority = Boolean(customDetail || activeNotesEditor.status !== 'none');
+  const shouldRevealPrompt = !hasVisiblePriority && !activeNotesEditor.priorityDismissed;
+  const priorityButtonLabel = hasVisiblePriority || shouldRevealPrompt
+    ? customDetail || getStatusLabel(activeNotesEditor.status, ui)
+    : ui.statusSet;
+  const priorityButtonClass = hasVisiblePriority
+    ? customDetail
+      ? `detail-${activeNotesEditor.detailColor}`
+      : `status-${activeNotesEditor.status}`
+    : shouldRevealPrompt
+      ? 'status-none'
+      : 'is-empty-priority';
+  const timeButtonLabel = activeNotesEditor.time || ui.timeSet;
+
   return (
     <div className="dialog-backdrop" role="presentation">
       <section
+        ref={dialogRef}
         className="notes-dialog"
         role="dialog"
         aria-modal="true"
@@ -2973,6 +3380,27 @@ function NotesDialog({ activeNotesEditor, ui, onClose, onChangeTaskTitle, onChan
           </div>
           <button type="button" className="notes-dialog-close" onClick={onClose} aria-label={ui.close}>
             ×
+          </button>
+        </div>
+
+        <div className="notes-dialog-meta-row">
+          <button
+            type="button"
+            className={`priority-trigger notes-priority-trigger ${priorityButtonClass}`}
+            onClick={onOpenPriority}
+            aria-haspopup="dialog"
+            aria-label={`${ui.statusSortLabel}: ${priorityButtonLabel}`}
+          >
+            {priorityButtonLabel}
+          </button>
+          <button
+            type="button"
+            className={`priority-trigger notes-time-trigger ${activeNotesEditor.time ? 'is-active' : ''}`}
+            onClick={onOpenTime}
+            aria-haspopup="dialog"
+            aria-label={`${ui.time}: ${timeButtonLabel}`}
+          >
+            {timeButtonLabel}
           </button>
         </div>
 

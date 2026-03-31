@@ -394,6 +394,12 @@ button {
   color: var(--muted);
 }
 
+.auth-copy-detail {
+  margin-top: -6px;
+  margin-bottom: 18px;
+  color: var(--ink);
+}
+
 .auth-form {
   display: flex;
   align-items: center;
@@ -458,7 +464,12 @@ button {
 
 .auth-status {
   margin-top: 16px;
- }
+}
+
+.auth-back-button {
+  width: 100%;
+  margin-top: 12px;
+}
 
 .status-banner {
   margin: 0 0 8px;
@@ -531,6 +542,10 @@ h1 {
   min-width: 0;
   justify-content: flex-end;
   flex: 1 1 auto;
+}
+
+.demo-signup-button {
+  white-space: nowrap;
 }
 
 .save-indicator {
@@ -751,6 +766,13 @@ h1 {
   color: var(--muted);
   font-size: 0.83rem;
   line-height: 1.2;
+}
+
+.top-toolbar-demo-badge {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.25;
 }
 
 .search-shell {
@@ -1158,11 +1180,21 @@ h1 {
   min-width: 0;
 }
 
+.day-grid {
+  --visible-row-count: 1;
+  --grid-header-height: 24px;
+  --grid-body-height: 240px;
+  --row-track-height: 240px;
+  min-height: calc(var(--grid-header-height) + var(--grid-body-height));
+  grid-template-rows: var(--grid-header-height) repeat(var(--visible-row-count), minmax(0, var(--row-track-height)));
+}
+
 .day-grid .task-grid-row {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1.45fr) minmax(0, 0.95fr) 156px;
+  grid-template-columns: 40px minmax(0, 1.6fr) minmax(0, 1fr);
   align-items: center;
-  min-height: 32px;
+  min-height: 0;
+  height: 100%;
   background: var(--paper);
   border-bottom: 1px solid var(--grid-line);
 }
@@ -1184,7 +1216,8 @@ h1 {
 }
 
 .task-grid-head {
-  min-height: 24px;
+  min-height: 0;
+  height: 100%;
   font-size: 0.66rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -1197,8 +1230,7 @@ h1 {
 }
 
 .task-grid-row > span,
-.cell-input,
-.status-cell {
+.cell-input {
   min-width: 0;
 }
 
@@ -1223,6 +1255,7 @@ h1 {
 .row-number-cell {
   position: relative;
   padding: 0;
+  background: inherit;
 }
 
 .row-number-cell.is-draggable {
@@ -1241,6 +1274,112 @@ h1 {
   height: 100%;
 }
 
+.row-number-status-low .row-number-label,
+.row-number-status-urgent .row-number-label,
+.row-number-status-critical .row-number-label,
+.row-number-status-done .row-number-label,
+.row-number-detail-default .row-number-label,
+.row-number-detail-blue .row-number-label,
+.row-number-detail-green .row-number-label,
+.row-number-detail-amber .row-number-label,
+.row-number-detail-pink .row-number-label,
+.row-number-detail-violet .row-number-label {
+  font-weight: 700;
+}
+
+.row-number-status-low,
+.row-number-status-urgent,
+.row-number-status-critical,
+.row-number-status-done,
+.row-number-detail-default,
+.row-number-detail-blue,
+.row-number-detail-green,
+.row-number-detail-amber,
+.row-number-detail-pink,
+.row-number-detail-violet {
+  background: var(--paper);
+}
+
+.row-number-status-low {
+  background: var(--status-low-bg);
+}
+
+.row-number-status-low .row-number-label {
+  color: var(--status-low-ink);
+}
+
+.row-number-status-urgent {
+  background: var(--status-urgent-bg);
+}
+
+.row-number-status-urgent .row-number-label {
+  color: var(--status-urgent-ink);
+}
+
+.row-number-status-critical {
+  background: var(--status-critical-bg);
+}
+
+.row-number-status-critical .row-number-label {
+  color: var(--status-critical-ink);
+}
+
+.row-number-status-done {
+  background: var(--status-done-bg);
+}
+
+.row-number-status-done .row-number-label {
+  color: var(--status-done-ink);
+}
+
+.row-number-detail-default {
+  background: var(--detail-default-bg);
+}
+
+.row-number-detail-default .row-number-label {
+  color: var(--detail-default-ink);
+}
+
+.row-number-detail-blue {
+  background: var(--detail-blue-bg);
+}
+
+.row-number-detail-blue .row-number-label {
+  color: var(--detail-blue-ink);
+}
+
+.row-number-detail-green {
+  background: var(--detail-green-bg);
+}
+
+.row-number-detail-green .row-number-label {
+  color: var(--detail-green-ink);
+}
+
+.row-number-detail-amber {
+  background: var(--detail-amber-bg);
+}
+
+.row-number-detail-amber .row-number-label {
+  color: var(--detail-amber-ink);
+}
+
+.row-number-detail-pink {
+  background: var(--detail-pink-bg);
+}
+
+.row-number-detail-pink .row-number-label {
+  color: var(--detail-pink-ink);
+}
+
+.row-number-detail-violet {
+  background: var(--detail-violet-bg);
+}
+
+.row-number-detail-violet .row-number-label {
+  color: var(--detail-violet-ink);
+}
+
 .row-number-actions {
   position: absolute;
   inset: 0;
@@ -1250,7 +1389,7 @@ h1 {
   gap: 4px;
   opacity: 0;
   pointer-events: none;
-  background: var(--paper);
+  background: inherit;
   transition: opacity 120ms ease;
 }
 
@@ -1506,20 +1645,6 @@ h1 {
   color: var(--ink);
 }
 
-.status-cell {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 4px 6px;
-}
-
-.status-empty {
-  display: block;
-  width: 100%;
-  min-height: 28px;
-}
-
 .priority-trigger {
   width: 100%;
   min-height: 28px;
@@ -1629,6 +1754,29 @@ h1 {
   color: var(--muted);
 }
 
+.notes-priority-trigger {
+  width: fit-content;
+  min-width: 120px;
+}
+
+.notes-dialog-meta-row {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 12px;
+}
+
+.notes-time-trigger {
+  width: fit-content;
+  min-width: 96px;
+}
+
+.notes-time-trigger.is-active {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
 .priority-menu-item {
   border: 1px solid var(--line-subtle);
   border-radius: 10px;
@@ -1645,6 +1793,15 @@ h1 {
   outline: none;
   border-color: var(--line-strong);
   box-shadow: var(--focus-ring);
+}
+
+.priority-dialog-time {
+  display: grid;
+  gap: 6px;
+}
+
+.priority-time-input {
+  min-width: 0;
 }
 
 .priority-menu-item.is-active {
@@ -1777,9 +1934,19 @@ h1 {
 
 .meta-dialog-actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 14px;
+}
+
+.meta-dialog-hint {
+  margin: 0;
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.2;
 }
 
 .meta-dialog-color-group {
@@ -2330,7 +2497,7 @@ h1 {
   }
 
   .day-grid .task-grid-row {
-    grid-template-columns: 30px minmax(0, 1fr) 120px;
+    grid-template-columns: 30px minmax(0, 1fr);
   }
 
   .task-grid-head > span:nth-child(3),
@@ -2373,10 +2540,6 @@ h1 {
 
   .mobile-notes-trigger:not(:empty) {
     color: var(--ink);
-  }
-
-  .notes-trigger.has-notes + .status-cell {
-    min-width: 0;
   }
 
   .notes-dialog {
