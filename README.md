@@ -1,4 +1,4 @@
-# Dnevnik Todo Calendar
+# Nev
 
 Live app: [https://dnevnik-todo-calendar.vercel.app/](https://dnevnik-todo-calendar.vercel.app/)
 
@@ -201,7 +201,7 @@ For deploys, Vercel needs:
 
 ## Product Direction
 
-Dnevnik Todo Calendar is still intentionally focused and calm, but it is being shaped as a foundation for a larger planning system over time. The current product centers on personal planning, notes, visual rhythm, and lightweight sync, while leaving room for future collaboration, assignments, reminders, and richer planning analytics.
+Nev is still intentionally focused and calm, but it is being shaped as a foundation for a larger planning system over time. The current product centers on personal planning, notes, visual rhythm, and lightweight sync, while leaving room for future collaboration, assignments, reminders, and richer planning analytics.
 
 ## License
 

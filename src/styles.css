@@ -521,6 +521,7 @@
 }
 
 :root[data-gridlines='crazy-minimalist'] .account-menu-panel,
+:root[data-gridlines='crazy-minimalist'] .ongoing-projects-dropdown,
 :root[data-gridlines='crazy-minimalist'] .planner-view-menu,
 :root[data-gridlines='crazy-minimalist'] .search-dropdown,
 :root[data-gridlines='crazy-minimalist'] .notes-dialog,
@@ -532,6 +533,8 @@
 
 :root[data-gridlines='crazy-minimalist'] .account-menu-header,
 :root[data-gridlines='crazy-minimalist'] .account-menu-field,
+:root[data-gridlines='crazy-minimalist'] .ongoing-project-card,
+:root[data-gridlines='crazy-minimalist'] .ongoing-projects-empty,
 :root[data-gridlines='crazy-minimalist'] .search-results,
 :root[data-gridlines='crazy-minimalist'] .search-empty-dropdown,
 :root[data-gridlines='crazy-minimalist'] .editor-toolbar,
@@ -543,6 +546,9 @@
 :root[data-gridlines='crazy-minimalist'] .theme-select,
 :root[data-gridlines='crazy-minimalist'] .nav-button,
 :root[data-gridlines='crazy-minimalist'] .priority-menu-item,
+:root[data-gridlines='crazy-minimalist'] .ongoing-project-title-input,
+:root[data-gridlines='crazy-minimalist'] .ongoing-project-notes-input,
+:root[data-gridlines='crazy-minimalist'] .ongoing-project-delete,
 :root[data-gridlines='crazy-minimalist'] .meta-dialog-input,
 :root[data-gridlines='crazy-minimalist'] .meta-dialog-segment,
 :root[data-gridlines='crazy-minimalist'] .notes-dialog-title-input,
@@ -564,6 +570,7 @@
 
 :root[data-gridlines='crazy-minimalist'] .notes-dialog .notes-priority-trigger,
 :root[data-gridlines='crazy-minimalist'] .notes-dialog .notes-time-trigger,
+:root[data-gridlines='crazy-minimalist'] .notes-dialog .notes-ongoing-trigger,
 :root[data-gridlines='crazy-minimalist'] .notes-dialog .notes-dialog-title-input,
 :root[data-gridlines='crazy-minimalist'] .notes-dialog .notes-dialog-close,
 :root[data-gridlines='crazy-minimalist'] .notes-dialog .toolbar-button,
@@ -883,6 +890,7 @@ h1 {
 
 .top-toolbar {
   display: grid;
+  grid-template-areas: "controls middle summary";
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 16px;
@@ -892,12 +900,57 @@ h1 {
   box-shadow: none;
 }
 
+.top-toolbar-menu-shell,
+.top-toolbar-menu-content {
+  display: contents;
+}
+
+.top-toolbar-brand {
+  display: none;
+}
+
+.mobile-header-menu-button {
+  display: none;
+}
+
+@media (min-width: 761px) {
+  .top-toolbar-menu-shell {
+    display: contents;
+  }
+
+  .top-toolbar-menu-content {
+    display: contents;
+  }
+}
+
+.mobile-header-menu-bars {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.mobile-header-menu-bars span {
+  display: block;
+  width: 16px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
 .top-toolbar-summary,
 .top-toolbar-controls,
 .top-toolbar-middle,
 .top-toolbar-group {
   display: flex;
   align-items: center;
+}
+
+.top-toolbar .nav-button,
+.top-toolbar .planner-view-trigger {
+  min-height: 46px;
+  font-weight: 700;
 }
 
 .top-toolbar-identity {
@@ -919,6 +972,7 @@ h1 {
   justify-content: flex-end;
   flex: 0 0 auto;
   justify-self: end;
+  grid-area: summary;
 }
 
 .top-toolbar-middle {
@@ -927,11 +981,33 @@ h1 {
   justify-content: center;
   min-width: 0;
   justify-self: center;
-  position: relative;
+  grid-area: middle;
 }
 
 .demo-signup-button {
   white-space: nowrap;
+  background: var(--panel-strong);
+  color: var(--ink);
+  filter: none;
+}
+
+.demo-signup-button:hover,
+.demo-signup-button:focus {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.demo-signin-button {
+  white-space: nowrap;
+  background: var(--panel-strong);
+  color: var(--ink);
+  filter: none;
+}
+
+.demo-signin-button:hover,
+.demo-signin-button:focus {
+  background: var(--hover);
+  color: var(--ink);
 }
 
 .save-indicator {
@@ -965,6 +1041,7 @@ h1 {
   flex-wrap: wrap;
   flex: 0 0 auto;
   justify-self: start;
+  grid-area: controls;
 }
 
 .top-toolbar-group {
@@ -1126,6 +1203,24 @@ h1 {
   width: 100%;
 }
 
+.account-menu-demo-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.account-menu-panel .nav-button,
+.account-menu-panel .theme-select,
+.planner-view-menu-item,
+.search-dropdown .search-input,
+.notes-dialog .nav-button,
+.meta-dialog .nav-button,
+.meta-dialog-input,
+.notes-dialog-title-input,
+.notes-dialog-close,
+.toolbar-button {
+  color: var(--ink);
+}
+
 .account-menu-placeholder-stack {
   margin-top: auto;
   display: grid;
@@ -1161,7 +1256,7 @@ h1 {
   padding: 8px 34px 8px 12px;
   font-size: 1.05rem;
   line-height: 1.1;
-  font-weight: 600;
+  font-weight: 700;
   text-align: left;
   position: relative;
   white-space: nowrap;
@@ -1234,14 +1329,20 @@ h1 {
 
 .top-toolbar-demo-badge {
   margin: 0;
-  position: absolute;
-  right: calc(100% + 18px);
-  top: 50%;
-  transform: translateY(-50%);
+  position: static;
   color: var(--muted);
   font-size: 0.76rem;
   line-height: 1.25;
-  white-space: nowrap;
+  white-space: normal;
+  text-align: center;
+}
+
+.demo-mode-strip {
+  width: min(calc(100vw - 24px), 1416px);
+  margin: 10px auto 6px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .calendar-planner-stage {
@@ -1252,6 +1353,99 @@ h1 {
 .search-menu-shell {
   position: relative;
   width: fit-content;
+}
+
+.ongoing-projects-menu-shell {
+  position: relative;
+  width: fit-content;
+}
+
+.ongoing-projects-trigger {
+  display: inline-flex;
+  align-items: center;
+}
+
+.ongoing-projects-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  z-index: 40;
+  width: min(360px, calc(100vw - 24px));
+  border: 1px solid var(--menu-outline);
+  border-radius: 16px;
+  background: var(--paper);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  box-shadow: var(--shadow-popover);
+}
+
+.ongoing-projects-header {
+  display: grid;
+  gap: 4px;
+}
+
+.ongoing-projects-list {
+  display: grid;
+  gap: 10px;
+  max-height: min(54vh, 480px);
+  overflow: auto;
+}
+
+.ongoing-project-card,
+.ongoing-projects-empty {
+  border: 1px solid var(--menu-outline);
+  border-radius: 14px;
+  background: var(--paper-muted);
+  padding: 10px;
+}
+
+.ongoing-projects-empty {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.ongoing-project-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ongoing-project-link {
+  width: 100%;
+  text-align: left;
+  transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.ongoing-project-link:hover,
+.ongoing-project-link:focus {
+  outline: none;
+  border-color: var(--line-strong);
+  background: var(--hover);
+  box-shadow: var(--focus-ring);
+}
+
+.ongoing-project-link:disabled {
+  cursor: default;
+  opacity: 0.66;
+  box-shadow: none;
+}
+
+.ongoing-project-title-text {
+  display: block;
+  color: var(--ink);
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.ongoing-project-notes-text {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
 }
 
 .search-trigger-button {
@@ -1370,7 +1564,7 @@ h1 {
   border-radius: 10px;
   transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
   text-align: center;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .nav-button:hover,
@@ -1661,6 +1855,17 @@ h1 {
   border-radius: 14px;
   background: var(--paper);
   overflow: hidden;
+}
+
+:root[data-theme='white'] .day-section,
+:root[data-theme='white'] .page-header {
+  border-color: var(--toolbar-outline);
+}
+
+:root[data-theme='white'][data-gridlines='crazy-minimalist'] .day-section,
+:root[data-theme='white'][data-gridlines='crazy-minimalist'] .page-header {
+  border-color: #d8d8d8;
+  box-shadow: inset 0 0 0 1px #d8d8d8;
 }
 
 .day-label-rail {
@@ -2403,9 +2608,20 @@ h1 {
   min-width: 96px;
 }
 
+.notes-ongoing-trigger {
+  width: fit-content;
+  min-width: 138px;
+}
+
 .notes-time-trigger.is-active {
   color: var(--ink);
   border-color: var(--line-strong);
+}
+
+.notes-ongoing-trigger.is-active {
+  background: var(--detail-violet-bg);
+  color: var(--detail-violet-ink);
+  border-color: color-mix(in srgb, var(--detail-violet-ink) 30%, var(--line-subtle));
 }
 
 .priority-menu-item {
@@ -3133,9 +3349,24 @@ h1 {
   }
 
   .top-toolbar {
-    grid-template-columns: 1fr;
+    grid-template-areas:
+      "brand middle menu";
+    grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 10px;
     padding: 12px 10px;
+    align-items: center;
+    position: relative;
+  }
+
+  .top-toolbar-brand {
+    display: flex;
+    align-items: center;
+    align-self: center;
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+    order: 1;
   }
 
   .misc-inbox-shell {
@@ -3155,6 +3386,42 @@ h1 {
     gap: 6px;
   }
 
+  .top-toolbar-menu-shell {
+    display: flex;
+    position: relative;
+    width: auto;
+    order: 3;
+    justify-self: end;
+  }
+
+  .mobile-header-menu-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 46px;
+    min-width: 46px;
+    padding: 0;
+  }
+
+  .top-toolbar-menu-content {
+    display: none;
+  }
+
+  .top-toolbar.is-mobile-menu-open .top-toolbar-menu-content {
+    display: grid;
+    gap: 10px;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: min(320px, calc(100vw - 20px));
+    padding: 10px;
+    border: 1px solid var(--menu-outline);
+    border-radius: 16px;
+    background: var(--paper);
+    box-shadow: var(--shadow-popover);
+    z-index: 90;
+  }
+
   .top-toolbar-summary,
   .top-toolbar-controls,
   .top-toolbar-middle {
@@ -3162,50 +3429,59 @@ h1 {
     justify-self: stretch;
   }
 
-  .top-toolbar-controls {
-    order: 1;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    gap: 8px;
-  }
-
-  .top-toolbar-summary {
-    order: 3;
-    justify-content: space-between;
-    flex-wrap: wrap;
+  .top-toolbar-controls,
+  .top-toolbar-summary,
+  .top-toolbar-identity {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
     gap: 8px;
   }
 
   .top-toolbar-middle {
     order: 2;
     justify-content: stretch;
+    min-width: 0;
   }
 
   .top-toolbar-demo-badge {
-    position: static;
-    transform: none;
     white-space: normal;
   }
 
   .top-toolbar-identity {
     width: 100%;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 8px;
+    align-items: stretch;
+    justify-content: flex-start;
   }
 
   .top-toolbar-identity > div {
     width: 100%;
-    justify-content: space-between;
+    justify-content: flex-start;
     gap: 8px;
-    flex-wrap: wrap;
+    flex: 0 0 auto;
   }
 
   .planner-view-trigger,
-  .misc-inbox-form-top {
+  .misc-inbox-form-top,
+  .today-button-shell,
+  .ongoing-projects-trigger,
+  .search-trigger-button,
+  .demo-signup-button,
+  .demo-signin-button {
     width: 100%;
     max-width: none;
     min-width: 0;
+  }
+
+  .today-button-shell .nav-button,
+  .ongoing-projects-trigger,
+  .search-trigger-button,
+  .demo-signup-button,
+  .demo-signin-button,
+  .planner-view-trigger,
+  .account-trigger {
+    width: 100%;
   }
 
   .search-menu-shell {
@@ -3226,19 +3502,27 @@ h1 {
 
   .account-menu-shell {
     align-self: auto;
-    margin-left: auto;
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .top-toolbar.is-mobile-menu-open .planner-view-trigger,
+  .top-toolbar.is-mobile-menu-open .demo-signup-button,
+  .top-toolbar.is-mobile-menu-open .demo-signin-button {
+    width: 100%;
   }
 
   .account-menu-panel {
-    position: absolute;
-    top: calc(100% + 8px);
-    right: -8px;
-    left: auto;
-    width: min(300px, calc(100vw - 24px));
+    position: fixed;
+    top: 116px;
+    right: 10px;
+    left: 10px;
+    width: auto;
     min-height: auto;
-    max-height: min(70vh, calc(100vh - 92px));
+    max-height: calc(100vh - 128px);
     overflow: auto;
     border-radius: 16px;
+    z-index: 90;
   }
 
   .account-menu-placeholder-stack {
@@ -3247,6 +3531,14 @@ h1 {
 
   .calendar-planner-stage,
   .spread-stage {
+    width: 100%;
+  }
+
+  .spread-stage {
+    margin-left: 0;
+  }
+
+  .spread-frame {
     width: 100%;
   }
 
@@ -3272,6 +3564,7 @@ h1 {
 
   .day-section {
     grid-template-columns: 1fr;
+    overflow: hidden;
     border-radius: 16px;
   }
 
@@ -3279,7 +3572,9 @@ h1 {
     justify-content: flex-start;
     border-right: none;
     border-bottom: 1px solid var(--grid-line);
+    min-height: 48px;
     padding: 10px 12px;
+    background: var(--panel);
   }
 
   .day-label-rail-inner {
@@ -3287,14 +3582,31 @@ h1 {
     gap: 6px;
   }
 
+  .day-title {
+    font-size: 0.92rem;
+  }
+
+  .day-date {
+    font-size: 1rem;
+  }
+
+  .day-grid {
+    --grid-header-height: 28px;
+    min-height: 0;
+    grid-template-rows: var(--grid-header-height) repeat(var(--visible-row-count), minmax(88px, auto));
+  }
+
   .day-grid .task-grid-row {
     grid-template-columns: 34px minmax(0, 1fr);
-    align-items: start;
+    align-items: stretch;
+    height: auto;
+    min-height: 88px;
+    overflow: hidden;
   }
 
   .task-grid-head > span:nth-child(3),
   .task-grid-row > button:nth-child(3) {
-    display: none;
+    display: none !important;
   }
 
   .task-grid-head > span {
@@ -3307,11 +3619,23 @@ h1 {
     padding: 0;
   }
 
+  .row-number,
+  .task-grid-head > span {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  .row-number-label {
+    align-items: flex-start;
+    padding-top: 12px;
+  }
+
   .task-cell {
     align-items: stretch;
     flex-direction: column;
     gap: 8px;
     padding: 10px 10px 12px;
+    justify-content: flex-start;
   }
 
   .day-grid.is-low-density .task-cell {
@@ -3320,6 +3644,7 @@ h1 {
 
   .cell-input {
     padding: 0;
+    min-height: 24px;
   }
 
   .task-enter-hint {
@@ -3358,6 +3683,17 @@ h1 {
     color: var(--ink);
   }
 
+  .notes-preview {
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+  }
+
+  .notes-trigger,
+  .notes-preview,
+  .notes-enter-hint {
+    display: none !important;
+  }
+
   .notes-trigger {
     display: none;
   }
@@ -3390,11 +3726,20 @@ h1 {
     flex-direction: column;
     align-items: stretch;
   }
+
+  .demo-mode-strip {
+    width: calc(100vw - 20px);
+    margin: 8px auto 6px;
+  }
 }
 
 @media (max-width: 560px) {
   .top-toolbar {
     padding: 10px;
+  }
+
+  .top-toolbar.is-mobile-menu-open .top-toolbar-menu-content {
+    width: min(300px, calc(100vw - 16px));
   }
 
   .top-toolbar-identity {
@@ -3416,7 +3761,9 @@ h1 {
   }
 
   .account-menu-panel {
-    width: min(286px, calc(100vw - 20px));
+    left: 8px;
+    right: 8px;
+    width: auto;
     min-height: auto;
     padding: 8px;
     border-radius: 16px;

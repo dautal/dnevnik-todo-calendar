@@ -8,8 +8,10 @@ import { isSupabaseConfigured, supabase } from './lib/supabase';
 // currently reuses `time` so older Supabase schemas can still degrade gracefully.
 type TaskRow = {
   id: string;
+  taskId: string | null;
   title: string;
   notes: string;
+  ongoingProjectId: string | null;
   status: RowStatus;
   time: string;
   detailColor: DetailColor;
@@ -19,6 +21,12 @@ type TaskRow = {
 type MiscTask = {
   id: string;
   text: string;
+};
+
+type OngoingProject = {
+  id: string;
+  title: string;
+  notes: string;
 };
 
 type DraggedTaskRow = {
@@ -31,6 +39,7 @@ type ActiveNotesEditor = {
   rowId: string;
   taskTitle: string;
   notes: string;
+  ongoingProjectId: string | null;
   status: RowStatus;
   time: string;
   detailColor: DetailColor;
@@ -78,6 +87,13 @@ type SearchResult = {
   dateLabel: string;
 };
 
+type OngoingProjectTarget = {
+  projectId: string;
+  weekKey: string;
+  dayKey: string;
+  rowId: string;
+};
+
 type DayData = {
   key: string;
   label: string;
@@ -97,6 +113,33 @@ type TaskRecord = {
   detail_color: DetailColor;
 };
 
+type PlannerTask = {
+  id: string;
+  title: string;
+  notes: string;
+  ongoingProjectId: string | null;
+  status: RowStatus;
+  time: string;
+  detailColor: DetailColor;
+  priorityDismissed: boolean;
+  updatedAt: string;
+};
+
+type PlannerPlacement = {
+  id: string;
+  taskId: string | null;
+  dayKey: string;
+  weekStart: string;
+  dayIndex: number;
+  rowIndex: number;
+  updatedAt: string;
+};
+
+type PlannerState = {
+  tasks: Record<string, PlannerTask>;
+  placementsByDay: Record<string, PlannerPlacement[]>;
+};
+
 type LegacyTaskRecord = {
   user_id: string;
   week_start: string;
@@ -109,7 +152,7 @@ type LegacyTaskRecord = {
   detail_color?: DetailColor;
 };
 
-type ThemeName = 'white' | 'paper' | 'night' | 'sepia' | 'blueprint';
+type ThemeName = 'auto' | 'white' | 'paper' | 'night' | 'sepia' | 'blueprint';
 type LanguageCode = 'en' | 'ru';
 type TextForm = 'formal' | 'informal';
 type GridlineMode = 'default' | 'crazy-minimalist';
@@ -126,7 +169,9 @@ const LEGACY_STORAGE_PREFIX = 'dnevnik-week';
 const LEGACY_MISC_STORAGE_PREFIX = 'dnevnik-misc';
 const LEGACY_DIRTY_WEEKS_STORAGE_KEY = 'dnevnik-dirty-weeks';
 const STORAGE_PREFIX = `dnevnik-${STORAGE_VERSION}-week`;
+const PLANNER_STATE_STORAGE_KEY = `dnevnik-${STORAGE_VERSION}-planner-state`;
 const MISC_STORAGE_PREFIX = `dnevnik-${STORAGE_VERSION}-misc`;
+const ONGOING_PROJECTS_STORAGE_KEY = `dnevnik-${STORAGE_VERSION}-ongoing-projects`;
 const DIRTY_WEEKS_STORAGE_KEY = `dnevnik-${STORAGE_VERSION}-dirty-weeks`;
 const PLANNER_VIEW_STORAGE_KEY = 'dnevnik-planner-view';
 const THEME_STORAGE_KEY = 'dnevnik-theme';
@@ -151,6 +196,7 @@ const MONTH_NAMES = [
 const UI_TEXT = {
   en: {
     plannerSettings: 'Planner Settings',
+    menu: 'Menu',
     signedInUser: 'Signed in user',
     weeklyPlanner: 'Weekly Planner',
     monthlyPlanner: 'Monthly Planner',
@@ -166,8 +212,16 @@ const UI_TEXT = {
     pastWeekEditHint: "You can't edit past weeks. If you want to edit, drag project to Today.",
     calendar: 'Calendar',
     search: 'Search',
+    ongoingProjects: 'Ongoing',
+    ongoingProjectsTitle: 'Ongoing projects',
+    ongoingProjectsCopy: 'Pinned long-term projects and details live here.',
+    ongoingProjectsEmpty: 'Nothing pinned yet.',
+    ongoingProjectsAdd: '+ Add ongoing project',
+    ongoingProjectTitlePlaceholder: 'Project title',
+    ongoingProjectNotesPlaceholder: 'Details',
+    deleteOngoingProject: 'Delete ongoing project',
     searchShortcutHint: 'Open with Cmd/Ctrl+F',
-    searchPlaceholder: 'Search tasks and notes',
+    searchPlaceholder: 'Search tasks and details',
     noMatchingTasks: 'No matching tasks',
     openAccount: 'Open account and settings',
     accountSettings: 'Account and settings',
@@ -176,10 +230,12 @@ const UI_TEXT = {
     demoMode: 'Demo Mode',
     demoModeTitle: 'Preview the planner',
     demoModeCopy: 'Click around freely. Sign up to sync and store your data in the beta.',
-    demoModeBanner: 'Demo mode · changes here are not saved to your account',
+    demoModeBanner: 'Demo mode',
     connectedAccount: 'Connected account',
     enableCloudSync: 'Add Supabase env vars to enable cloud sync.',
     theme: 'Theme',
+    themeAuto: 'Automatic',
+    themeNote: 'Automatic follows your local time and switches between white and dark.',
     language: 'Language',
     languageNote: 'Interface language only. Your tasks and notes stay unchanged.',
     textForm: 'Text form',
@@ -197,11 +253,11 @@ const UI_TEXT = {
     languageComingSoon: 'Other languages coming soon',
     themeWhite: 'White',
     themePaper: 'Paper',
-    themeNight: 'Night',
+    themeNight: 'Dark',
     themeSepia: 'Sepia',
     themeBlueprint: 'Blueprint',
     signOut: 'Sign out',
-    appName: 'Dnevnik Todo Calendar',
+    appName: 'Nev',
     authTitle: 'Sign in to sync your weekly planner',
     authCopy: 'Your tasks, notes, and weekly spreads will be stored in Supabase and tied to your account.',
     inviteOnlyAuthTitle: 'Invite-only beta access',
@@ -220,7 +276,8 @@ const UI_TEXT = {
     accountCreated: (email: string) => `Account created for ${email}. Check your email if confirmation is required.`,
     task: 'Project',
     taskEnterHint: 'Open notes with Enter',
-    notes: 'Notes',
+    notes: 'Details',
+    ongoingSet: 'Set as on-going',
     status: 'Status',
     done: 'Done',
     del: 'Del',
@@ -266,7 +323,7 @@ const UI_TEXT = {
     cancel: 'Cancel',
     addRow: '+ Add row',
     rowLimitReached: (limit: number) => `Row limit reached (${limit})`,
-    taskNotes: 'Task Notes',
+    taskNotes: 'Project Details',
     notesShortcutHint: 'Save and close with Cmd/Ctrl+Enter',
     untitledTask: 'Untitled task',
     body: 'Body',
@@ -284,6 +341,7 @@ const UI_TEXT = {
   },
   ru: {
     plannerSettings: 'Настройки планера',
+    menu: 'Меню',
     signedInUser: 'Пользователь',
     weeklyPlanner: 'Еженедельник',
     monthlyPlanner: 'Ежемесячник',
@@ -299,8 +357,16 @@ const UI_TEXT = {
     pastWeekEditHint: 'Прошлые недели нельзя редактировать. Чтобы изменить проект, перетащите его в Сегодня.',
     calendar: 'Календарь',
     search: 'Поиск',
+    ongoingProjects: 'Постоянные',
+    ongoingProjectsTitle: 'Постоянные проекты',
+    ongoingProjectsCopy: 'Здесь живут закрепленные долгосрочные проекты и детали.',
+    ongoingProjectsEmpty: 'Пока ничего не закреплено.',
+    ongoingProjectsAdd: '+ Добавить проект',
+    ongoingProjectTitlePlaceholder: 'Название проекта',
+    ongoingProjectNotesPlaceholder: 'Детали',
+    deleteOngoingProject: 'Удалить постоянный проект',
     searchShortcutHint: 'Открыть через Cmd/Ctrl+F',
-    searchPlaceholder: 'Поиск по задачам и заметкам',
+    searchPlaceholder: 'Поиск по задачам и деталям',
     noMatchingTasks: 'Ничего не найдено',
     openAccount: 'Открыть аккаунт и настройки',
     accountSettings: 'Аккаунт и настройки',
@@ -309,10 +375,12 @@ const UI_TEXT = {
     demoMode: 'Демо',
     demoModeTitle: 'Просмотр планера',
     demoModeCopy: 'Свободно изучайте интерфейс. Чтобы синхронизировать и сохранять данные, подайте заявку в бета-доступ.',
-    demoModeBanner: 'Демо-режим · изменения здесь не сохраняются в аккаунт',
+    demoModeBanner: 'Демо-режим',
     connectedAccount: 'Подключенный аккаунт',
     enableCloudSync: 'Добавьте переменные Supabase, чтобы включить облачную синхронизацию.',
     theme: 'Тема',
+    themeAuto: 'Авто',
+    themeNote: 'Авто использует ваше локальное время и переключается между белой и тёмной темой.',
     language: 'Язык',
     languageNote: 'Меняется только интерфейс. Задачи и заметки остаются без изменений.',
     textForm: 'Форма текста',
@@ -330,11 +398,11 @@ const UI_TEXT = {
     languageComingSoon: 'Скоро появятся другие языки',
     themeWhite: 'Белая',
     themePaper: 'Бумага',
-    themeNight: 'Ночь',
+    themeNight: 'Тёмная',
     themeSepia: 'Сепия',
     themeBlueprint: 'Чертеж',
     signOut: 'Выйти',
-    appName: 'Dnevnik Todo Calendar',
+    appName: 'Nev',
     authTitle: 'Войдите, чтобы синхронизировать ваш еженедельник',
     authCopy: 'Ваши задачи, заметки и недельные развороты будут храниться в Supabase и привязаны к аккаунту.',
     inviteOnlyAuthTitle: 'Бета-доступ по приглашению',
@@ -353,7 +421,8 @@ const UI_TEXT = {
     accountCreated: (email: string) => `Аккаунт для ${email} создан. Проверьте почту, если требуется подтверждение.`,
     task: 'Проект',
     taskEnterHint: 'Открыть заметки через Enter',
-    notes: 'Заметки',
+    notes: 'Детали',
+    ongoingSet: 'Сделать постоянным',
     status: 'Статус',
     done: 'Сделано',
     del: 'Удал.',
@@ -399,7 +468,7 @@ const UI_TEXT = {
     cancel: 'Отмена',
     addRow: '+ Добавить строку',
     rowLimitReached: (limit: number) => `Достигнут лимит строк (${limit})`,
-    taskNotes: 'Заметки к задаче',
+    taskNotes: 'Детали проекта',
     notesShortcutHint: 'Сохранить и закрыть: Cmd/Ctrl+Enter',
     untitledTask: 'Без названия',
     body: 'Обычный',
@@ -433,8 +502,24 @@ const ALLOWED_NOTE_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'UL', 'OL', 'LI', '
 
 type UiText = (typeof UI_TEXT)[LanguageCode];
 
+function createEntityId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createEmptyPlannerState(): PlannerState {
+  return {
+    tasks: {},
+    placementsByDay: {},
+  };
+}
+
 function getDateLocale(language: LanguageCode) {
   return language === 'ru' ? 'ru-RU' : 'en-US';
+}
+
+function resolveThemeByLocalTime(date: Date): Exclude<ThemeName, 'auto'> {
+  const hour = date.getHours();
+  return hour >= 7 && hour < 19 ? 'white' : 'night';
 }
 
 function applyInformalTextForm<T>(value: T): T {
@@ -732,12 +817,38 @@ function createEmptyRows(dayKey: string): TaskRow[] {
 function createEmptyRow(dayKey: string, index: number): TaskRow {
   return {
     id: `${dayKey}-${index}`,
+    taskId: null,
     title: '',
     notes: '',
+    ongoingProjectId: null,
     status: 'none',
     time: '',
     detailColor: 'default',
     priorityDismissed: false,
+  };
+}
+
+function getPlacementSlotId(dayKey: string, rowIndex: number) {
+  return `slot-${dayKey}-${rowIndex}`;
+}
+
+function buildPlacementContext(dayKey: string) {
+  return {
+    weekStart: getWeekKeyForDayKey(dayKey),
+    dayIndex: getDayIndex(dayKey),
+  };
+}
+
+function createEmptyPlacement(dayKey: string, rowIndex: number): PlannerPlacement {
+  const context = buildPlacementContext(dayKey);
+  return {
+    id: getPlacementSlotId(dayKey, rowIndex),
+    taskId: null,
+    dayKey,
+    weekStart: context.weekStart,
+    dayIndex: context.dayIndex,
+    rowIndex,
+    updatedAt: new Date().toISOString(),
   };
 }
 
@@ -785,8 +896,10 @@ function normalizeTaskRow(row: Partial<TaskRow> & { completed?: boolean }, dayKe
 
   return {
     id: typeof row.id === 'string' ? row.id : `${dayKey}-${index}`,
+    taskId: typeof row.taskId === 'string' && row.taskId ? row.taskId : null,
     title: typeof row.title === 'string' ? row.title : '',
     notes: typeof row.notes === 'string' ? row.notes : '',
+    ongoingProjectId: typeof row.ongoingProjectId === 'string' && row.ongoingProjectId ? row.ongoingProjectId : null,
     status: normalizedPriorityAndTime.status,
     time: normalizedPriorityAndTime.time,
     detailColor:
@@ -814,11 +927,167 @@ function normalizeSavedWeeks(raw: Record<string, Record<string, Array<Partial<Ta
   return normalized;
 }
 
+function createPlannerTaskFromRow(row: TaskRow, fallbackId: string): PlannerTask {
+  return {
+    id: row.taskId ?? fallbackId,
+    title: row.title,
+    notes: row.notes,
+    ongoingProjectId: row.ongoingProjectId,
+    status: row.status,
+    time: row.time,
+    detailColor: row.detailColor,
+    priorityDismissed: row.priorityDismissed,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function buildPlannerStateFromLegacyWeeks(weeks: Record<string, Record<string, TaskRow[]>>): PlannerState {
+  const state = createEmptyPlannerState();
+
+  for (const week of Object.values(weeks)) {
+    for (const [dayKey, rows] of Object.entries(week)) {
+      state.placementsByDay[dayKey] = rows.map((row, rowIndex) => {
+        const taskId =
+          row.taskId ??
+          (isRowEmpty(row) ? null : `task-${typeof row.id === 'string' && row.id ? row.id : createEntityId('task')}`);
+
+        if (taskId) {
+          state.tasks[taskId] = createPlannerTaskFromRow(row, taskId);
+        }
+
+        const context = buildPlacementContext(dayKey);
+        return {
+          id: typeof row.id === 'string' && row.id ? row.id : getPlacementSlotId(dayKey, rowIndex),
+          taskId,
+          dayKey,
+          weekStart: context.weekStart,
+          dayIndex: context.dayIndex,
+          rowIndex,
+          updatedAt: new Date().toISOString(),
+        };
+      });
+    }
+  }
+
+  return state;
+}
+
+function normalizePlannerState(raw: PlannerState): PlannerState {
+  const tasks: Record<string, PlannerTask> = {};
+  for (const [taskId, task] of Object.entries(raw.tasks ?? {})) {
+    tasks[taskId] = {
+      id: taskId,
+      title: typeof task.title === 'string' ? task.title : '',
+      notes: typeof task.notes === 'string' ? task.notes : '',
+      ongoingProjectId: typeof task.ongoingProjectId === 'string' && task.ongoingProjectId ? task.ongoingProjectId : null,
+      status: normalizeStatus(task.status),
+      time: typeof task.time === 'string' ? task.time : '',
+      detailColor: normalizeDetailColor(task.detailColor),
+      priorityDismissed: Boolean(task.priorityDismissed),
+      updatedAt: typeof task.updatedAt === 'string' && task.updatedAt ? task.updatedAt : new Date().toISOString(),
+    };
+  }
+
+  const placementsByDay: Record<string, PlannerPlacement[]> = {};
+  for (const [dayKey, placements] of Object.entries(raw.placementsByDay ?? {})) {
+    const context = buildPlacementContext(dayKey);
+    placementsByDay[dayKey] = [...placements]
+      .map((placement, rowIndex) => ({
+        id: typeof placement.id === 'string' && placement.id ? placement.id : getPlacementSlotId(dayKey, rowIndex),
+        taskId: typeof placement.taskId === 'string' && placement.taskId ? placement.taskId : null,
+        dayKey,
+        weekStart: context.weekStart,
+        dayIndex: context.dayIndex,
+        rowIndex:
+          typeof placement.rowIndex === 'number' && Number.isFinite(placement.rowIndex) ? placement.rowIndex : rowIndex,
+        updatedAt: typeof placement.updatedAt === 'string' && placement.updatedAt ? placement.updatedAt : new Date().toISOString(),
+      }))
+      .sort((left, right) => left.rowIndex - right.rowIndex)
+      .map((placement, rowIndex) => ({ ...placement, rowIndex }));
+  }
+
+  return {
+    tasks,
+    placementsByDay,
+  };
+}
+
+function getPlannerPlacementsForDay(state: PlannerState, dayKey: string): PlannerPlacement[] {
+  const placements = state.placementsByDay[dayKey];
+  if (!placements || placements.length === 0) {
+    return [createEmptyPlacement(dayKey, 0)];
+  }
+
+  return placements;
+}
+
+function buildTaskRowFromPlacement(state: PlannerState, dayKey: string, placement: PlannerPlacement, rowIndex: number): TaskRow {
+  const task = placement.taskId ? state.tasks[placement.taskId] : null;
+  const baseRow = createEmptyRow(dayKey, rowIndex);
+  return {
+    ...baseRow,
+    id: placement.id,
+    taskId: placement.taskId,
+    title: task?.title ?? '',
+    notes: task?.notes ?? '',
+    ongoingProjectId: task?.ongoingProjectId ?? null,
+    status: task?.status ?? 'none',
+    time: task?.time ?? '',
+    detailColor: task?.detailColor ?? 'default',
+    priorityDismissed: task?.priorityDismissed ?? false,
+  };
+}
+
+function projectRowsForDay(state: PlannerState, dayKey: string): TaskRow[] {
+  return getPlannerPlacementsForDay(state, dayKey).map((placement, rowIndex) => buildTaskRowFromPlacement(state, dayKey, placement, rowIndex));
+}
+
+function projectLegacyWeeksFromPlannerState(state: PlannerState): Record<string, Record<string, TaskRow[]>> {
+  const weeks: Record<string, Record<string, TaskRow[]>> = {};
+
+  for (const dayKey of Object.keys(state.placementsByDay)) {
+    const weekKey = getWeekKeyForDayKey(dayKey);
+    weeks[weekKey] ??= {};
+    weeks[weekKey][dayKey] = projectRowsForDay(state, dayKey);
+  }
+
+  return weeks;
+}
+
+function mergePlannerStateForWeek(current: PlannerState, weekKey: string, nextWeekRows: Record<string, TaskRow[]>): PlannerState {
+  const nextWeekState = buildPlannerStateFromLegacyWeeks({ [weekKey]: nextWeekRows });
+  const nextPlacementsByDay = { ...current.placementsByDay };
+  const nextTasks = { ...current.tasks };
+
+  for (const [dayKey, placements] of Object.entries(nextWeekState.placementsByDay)) {
+    const existingPlacements = current.placementsByDay[dayKey] ?? [];
+    for (const placement of existingPlacements) {
+      if (placement.taskId) {
+        delete nextTasks[placement.taskId];
+      }
+    }
+
+    nextPlacementsByDay[dayKey] = placements;
+    placements.forEach((placement) => {
+      if (placement.taskId && nextWeekState.tasks[placement.taskId]) {
+        nextTasks[placement.taskId] = nextWeekState.tasks[placement.taskId];
+      }
+    });
+  }
+
+  return {
+    tasks: nextTasks,
+    placementsByDay: nextPlacementsByDay,
+  };
+}
+
 function reindexRows(dayKey: string, rows: TaskRow[]) {
   return rows.map((row, index) => ({
     ...createEmptyRow(dayKey, index),
+    taskId: row.taskId,
     title: row.title,
     notes: row.notes,
+    ongoingProjectId: row.ongoingProjectId,
     status: row.status,
     time: row.time,
     detailColor: row.detailColor,
@@ -971,71 +1240,14 @@ function isWeekBefore(sourceWeekKey: string, targetWeekKey: string) {
   return parseWeekKey(sourceWeekKey).getTime() < parseWeekKey(targetWeekKey).getTime();
 }
 
-function moveRowIntoDay(dayKey: string, sourceRow: TaskRow, rows: TaskRow[]) {
-  const nextRows = [...rows];
-  const emptyTargetIndex = nextRows.findIndex((row) => isRowEmpty(row));
-
-  if (emptyTargetIndex >= 0) {
-    nextRows[emptyTargetIndex] = {
-      ...createEmptyRow(dayKey, emptyTargetIndex),
-      title: sourceRow.title,
-      notes: sourceRow.notes,
-      status: sourceRow.status,
-      time: sourceRow.time,
-      detailColor: sourceRow.detailColor,
-      priorityDismissed: sourceRow.priorityDismissed,
-    };
-    return trimTrailingEmptyRows(dayKey, nextRows);
-  }
-
-  if (nextRows.length >= MAX_ROW_COUNT) {
-    return null;
-  }
-
-  return reindexRows(dayKey, [
-    ...nextRows,
-    {
-      ...createEmptyRow(dayKey, nextRows.length),
-      title: sourceRow.title,
-      notes: sourceRow.notes,
-      status: sourceRow.status,
-      time: sourceRow.time,
-      detailColor: sourceRow.detailColor,
-      priorityDismissed: sourceRow.priorityDismissed,
-    },
-  ]);
-}
-
-function insertRowIntoDay(dayKey: string, sourceRow: TaskRow, rows: TaskRow[], targetIndex: number) {
-  const sanitizedTargetIndex = Math.max(0, Math.min(targetIndex, rows.length));
-  const nextRows = [...rows];
-  const trailingEmptyRow = nextRows.length > ROW_COUNT && isRowEmpty(nextRows[nextRows.length - 1]);
-
-  if (nextRows.length >= MAX_ROW_COUNT && !trailingEmptyRow) {
-    return null;
-  }
-
-  const insertedRow = {
-    ...createEmptyRow(dayKey, sanitizedTargetIndex),
-    title: sourceRow.title,
-    notes: sourceRow.notes,
-    status: sourceRow.status,
-    time: sourceRow.time,
-    detailColor: sourceRow.detailColor,
-    priorityDismissed: sourceRow.priorityDismissed,
-  };
-
-  nextRows.splice(sanitizedTargetIndex, 0, insertedRow);
-
-  if (nextRows.length > MAX_ROW_COUNT) {
-    nextRows.pop();
-  }
-
-  return trimTrailingEmptyRows(dayKey, reindexRows(dayKey, nextRows));
-}
-
 function isRowEmpty(row: TaskRow) {
-  return row.title.trim() === '' && row.notes.trim() === '' && row.status === 'none' && row.time.trim() === '';
+  return (
+    row.title.trim() === '' &&
+    row.notes.trim() === '' &&
+    row.ongoingProjectId === null &&
+    row.status === 'none' &&
+    row.time.trim() === ''
+  );
 }
 
 function mapRecordsToWeek(weekStart: Date, records: TaskRecord[]) {
@@ -1060,8 +1272,10 @@ function mapRecordsToWeek(weekStart: Date, records: TaskRecord[]) {
 
     mapped[dayKey][record.row_index] = {
       id: `${dayKey}-${record.row_index}`,
+      taskId: `task-${dayKey}-${record.row_index}`,
       title: record.title,
       notes: record.notes,
+      ongoingProjectId: null,
       ...normalizePriorityAndTime(normalizeStatus(record.status), record.task_time ?? ''),
       detailColor: normalizeDetailColor(record.detail_color),
       priorityDismissed: false,
@@ -1206,6 +1420,14 @@ function createMiscTask(text: string): MiscTask {
   };
 }
 
+function createOngoingProject(): OngoingProject {
+  return {
+    id: `ongoing-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    title: '',
+    notes: '',
+  };
+}
+
 function shiftWeekKeyByOffset(weekKey: string, offset: number) {
   const date = parseWeekKey(weekKey);
   date.setDate(date.getDate() + offset * 7);
@@ -1225,6 +1447,203 @@ function normalizeMiscTasks(raw: Record<string, Array<Partial<MiscTask>>>) {
   }
 
   return normalized;
+}
+
+function normalizeOngoingProjects(raw: Array<Partial<OngoingProject>>) {
+  return raw.map((project, index) => ({
+    id: typeof project.id === 'string' && project.id ? project.id : `ongoing-${index}`,
+    title: typeof project.title === 'string' ? project.title : '',
+    notes: typeof project.notes === 'string' ? project.notes : '',
+  }));
+}
+
+function buildOngoingProjectTargets(state: PlannerState) {
+  const targets = new Map<string, OngoingProjectTarget>();
+
+  for (const [dayKey, placements] of Object.entries(state.placementsByDay)) {
+    const weekKey = getWeekKeyForDayKey(dayKey);
+
+    for (const placement of placements) {
+      if (!placement.taskId) {
+        continue;
+      }
+
+      const task = state.tasks[placement.taskId];
+      if (!task?.ongoingProjectId || targets.has(task.ongoingProjectId)) {
+        continue;
+      }
+
+      targets.set(task.ongoingProjectId, {
+        projectId: task.ongoingProjectId,
+        weekKey,
+        dayKey,
+        rowId: placement.id,
+      });
+    }
+  }
+
+  return targets;
+}
+
+function buildDemoPlannerState(baseMonday: Date, ongoingProjects: OngoingProject[]): PlannerState {
+  const currentWeekKey = formatWeekKey(baseMonday);
+  const nextWeekKey = shiftWeekKeyByOffset(currentWeekKey, 1);
+  const adminOngoingId = ongoingProjects[0]?.id ?? null;
+  const planningOngoingId = ongoingProjects[1]?.id ?? null;
+
+  const demoWeeks = normalizeSavedWeeks({
+    [currentWeekKey]: {
+      [getDayKeyForWeekAndIndex(currentWeekKey, 0)]: [
+        {
+          id: `${getDayKeyForWeekAndIndex(currentWeekKey, 0)}-0`,
+          title: 'Weekly planning session',
+          notes: '<p>Outline the top priorities for the week and leave room for lighter admin work.</p>',
+          status: 'urgent',
+          time: '10:00',
+          detailColor: 'amber',
+          ongoingProjectId: planningOngoingId,
+        },
+        {
+          id: `${getDayKeyForWeekAndIndex(currentWeekKey, 0)}-1`,
+          title: 'Reply to messages',
+          notes: '<p>Catch up on inbox items and any small follow-ups that can be closed quickly.</p>',
+          status: 'low',
+          time: '18:30',
+          detailColor: 'blue',
+          ongoingProjectId: adminOngoingId,
+        },
+      ],
+      [getDayKeyForWeekAndIndex(currentWeekKey, 1)]: [
+        {
+          id: `${getDayKeyForWeekAndIndex(currentWeekKey, 1)}-0`,
+          title: 'Prepare meeting notes',
+          notes: '<p>Gather updates, open questions, and a short list of decisions to make.</p>',
+          status: 'critical',
+          detailColor: 'pink',
+          ongoingProjectId: planningOngoingId,
+        },
+        {
+          id: `${getDayKeyForWeekAndIndex(currentWeekKey, 1)}-1`,
+          title: 'Deep work block',
+          notes: '<p>Reserve uninterrupted time for one larger task or a note-heavy thinking session.</p>',
+          status: 'none',
+          detailColor: 'default',
+        },
+      ],
+      [getDayKeyForWeekAndIndex(currentWeekKey, 2)]: [
+        {
+          id: `${getDayKeyForWeekAndIndex(currentWeekKey, 2)}-0`,
+          title: 'Personal reminders',
+          notes: '<p>Use this row as a quick scratch area for errands, notes, or reminders.</p>',
+          status: 'none',
+          detailColor: 'violet',
+        },
+      ],
+      [getDayKeyForWeekAndIndex(currentWeekKey, 3)]: [
+        {
+          id: `${getDayKeyForWeekAndIndex(currentWeekKey, 3)}-0`,
+          title: 'Complete presentation draft',
+          notes: '<ul><li>Review structure</li><li>Add final examples</li><li>Trim unnecessary detail</li></ul>',
+          status: 'done',
+          detailColor: 'green',
+          ongoingProjectId: planningOngoingId,
+        },
+        {
+          id: `${getDayKeyForWeekAndIndex(currentWeekKey, 3)}-1`,
+          title: 'Update shared checklist',
+          notes: '<p>Refresh the running checklist with any new blockers, tasks, or next steps.</p>',
+          status: 'low',
+          detailColor: 'blue',
+        },
+      ],
+      [getDayKeyForWeekAndIndex(currentWeekKey, 4)]: [
+        {
+          id: `${getDayKeyForWeekAndIndex(currentWeekKey, 4)}-0`,
+          title: 'Weekly review',
+          notes: '<p>Capture what moved forward well this week and what should be carried over.</p>',
+          status: 'urgent',
+          time: '16:00',
+          detailColor: 'amber',
+        },
+      ],
+      [getDayKeyForWeekAndIndex(currentWeekKey, 5)]: [
+        {
+          id: `${getDayKeyForWeekAndIndex(currentWeekKey, 5)}-0`,
+          title: 'Weekend planning',
+          notes: '<p>Keep a lighter row for personal admin, errands, or a reset for next week.</p>',
+          status: 'none',
+          detailColor: 'default',
+        },
+      ],
+    },
+    [nextWeekKey]: {
+      [getDayKeyForWeekAndIndex(nextWeekKey, 0)]: [
+        {
+          id: `${getDayKeyForWeekAndIndex(nextWeekKey, 0)}-0`,
+          title: 'Plan next sprint',
+          notes: '<p>Use this future week to preview how projects and notes can move forward.</p>',
+          status: 'urgent',
+          detailColor: 'amber',
+          ongoingProjectId: planningOngoingId,
+        },
+      ],
+      [getDayKeyForWeekAndIndex(nextWeekKey, 2)]: [
+        {
+          id: `${getDayKeyForWeekAndIndex(nextWeekKey, 2)}-0`,
+          title: 'Research session',
+          notes: '<p>Collect references, summarize ideas, and leave notes for later decisions.</p>',
+          status: 'low',
+          detailColor: 'blue',
+        },
+      ],
+      [getDayKeyForWeekAndIndex(nextWeekKey, 4)]: [
+        {
+          id: `${getDayKeyForWeekAndIndex(nextWeekKey, 4)}-0`,
+          title: 'Wrap-up and handoff',
+          notes: '<p>Prepare a short summary of completed work and the next items to pick up.</p>',
+          status: 'critical',
+          detailColor: 'pink',
+        },
+      ],
+    },
+  });
+
+  return buildPlannerStateFromLegacyWeeks(demoWeeks);
+}
+
+function buildDemoMiscTasks(baseMonday: Date): Record<string, MiscTask[]> {
+  const weekKey = formatWeekKey(baseMonday);
+
+  return {
+    [weekKey]: [
+      { id: 'demo-misc-1', text: 'ideas for next week' },
+      { id: 'demo-misc-2', text: 'follow up on loose tasks' },
+      { id: 'demo-misc-3', text: 'capture anything worth assigning later' },
+    ],
+  };
+}
+
+function buildDemoOngoingProjects(): OngoingProject[] {
+  return [
+    {
+      id: 'demo-ongoing-admin',
+      title: 'Admin and follow-ups',
+      notes: 'A simple long-term place for recurring admin items, references, and reminders.',
+    },
+    {
+      id: 'demo-ongoing-planning',
+      title: 'Long-term planning',
+      notes: 'Pinned notes for ideas, larger projects, and anything that should stay visible beyond one week.',
+    },
+  ];
+}
+
+function isPlannerStateEmpty(state: PlannerState) {
+  return Object.keys(state.tasks).length === 0 && Object.keys(state.placementsByDay).length === 0;
+}
+
+function hasAnyMiscTasks(tasksByWeek: Record<string, MiscTask[]>) {
+  return Object.values(tasksByWeek).some((tasks) => tasks.length > 0);
 }
 
 function isPresetStatus(status: RowStatus) {
@@ -1262,13 +1681,14 @@ const MAX_MISC_TASKS = 10;
 
 function App() {
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()));
-  const [savedWeeks, setSavedWeeks] = useState<Record<string, Record<string, TaskRow[]>>>({});
+  const [plannerState, setPlannerState] = useState<PlannerState>(() => createEmptyPlannerState());
   const [activeNotesEditor, setActiveNotesEditor] = useState<ActiveNotesEditor | null>(null);
   const [activeStatusEditor, setActiveStatusEditor] = useState<ActiveStatusEditor | null>(null);
   const [activeTimeEditor, setActiveTimeEditor] = useState<ActiveTimeEditor | null>(null);
   const [activePriorityPicker, setActivePriorityPicker] = useState<ActivePriorityPicker | null>(null);
   const [pendingRowDelete, setPendingRowDelete] = useState<PendingRowDelete | null>(null);
   const [miscTasksByWeek, setMiscTasksByWeek] = useState<Record<string, MiscTask[]>>({});
+  const [ongoingProjects, setOngoingProjects] = useState<OngoingProject[]>([]);
   const [miscTaskInput, setMiscTaskInput] = useState('');
   const [draggedMiscTaskId, setDraggedMiscTaskId] = useState<string | null>(null);
   const [draggedTaskRow, setDraggedTaskRow] = useState<DraggedTaskRow | null>(null);
@@ -1285,6 +1705,7 @@ function App() {
     const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
 
     if (
+      savedTheme === 'auto' ||
       savedTheme === 'white' ||
       savedTheme === 'paper' ||
       savedTheme === 'night' ||
@@ -1296,12 +1717,14 @@ function App() {
 
     return 'white';
   });
+  const [themeClock, setThemeClock] = useState(() => Date.now());
   const [user, setUser] = useState<User | null>(null);
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [authMessage, setAuthMessage] = useState('');
   const [showInviteOnlyAuth, setShowInviteOnlyAuth] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [hasResolvedAuthState, setHasResolvedAuthState] = useState(() => !isSupabaseConfigured);
   const [isWeekLoading, setIsWeekLoading] = useState(false);
   const [showWeekLoadingBanner, setShowWeekLoadingBanner] = useState(false);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
@@ -1311,6 +1734,8 @@ function App() {
   const [usesLegacyDetailColorColumn, setUsesLegacyDetailColorColumn] = useState(false);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isPlannerViewMenuOpen, setIsPlannerViewMenuOpen] = useState(false);
+  const [isOngoingProjectsOpen, setIsOngoingProjectsOpen] = useState(false);
+  const [isMobileHeaderMenuOpen, setIsMobileHeaderMenuOpen] = useState(false);
   const [visibleYear, setVisibleYear] = useState(() => new Date().getFullYear());
   const [visibleMonthDate, setVisibleMonthDate] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [hasHydratedLocalCache, setHasHydratedLocalCache] = useState(false);
@@ -1324,10 +1749,12 @@ function App() {
   });
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const plannerViewMenuRef = useRef<HTMLDivElement | null>(null);
+  const ongoingProjectsMenuRef = useRef<HTMLDivElement | null>(null);
   const searchMenuRef = useRef<HTMLDivElement | null>(null);
+  const mobileHeaderMenuRef = useRef<HTMLDivElement | null>(null);
   const miscInboxInputRef = useRef<HTMLInputElement | null>(null);
   const previousWeekStartRef = useRef(weekStart);
-  const savedWeeksRef = useRef(savedWeeks);
+  const plannerStateRef = useRef(plannerState);
   const queuedDaySyncsRef = useRef<Record<string, TaskRow[]>>({});
   const activeDaySyncsRef = useRef<Record<string, boolean>>({});
   const pendingDaySyncTimeoutsRef = useRef<Record<string, number>>({});
@@ -1349,8 +1776,14 @@ function App() {
     () => getMonthCalendar(visibleMonthDate.getFullYear(), visibleMonthDate.getMonth(), language, textForm),
     [language, visibleMonthDate, textForm],
   );
+  const savedWeeks = useMemo(() => projectLegacyWeeksFromPlannerState(plannerState), [plannerState]);
   const activityMap = useMemo(() => buildActivityMap(savedWeeks), [savedWeeks]);
   const searchResults = useMemo(() => buildSearchResults(savedWeeks, searchQuery, language, textForm), [savedWeeks, searchQuery, language, textForm]);
+  const ongoingProjectTargets = useMemo(() => buildOngoingProjectTargets(plannerState), [plannerState]);
+  const linkedOngoingProjects = useMemo(
+    () => ongoingProjects.filter((project) => ongoingProjectTargets.has(project.id)),
+    [ongoingProjects, ongoingProjectTargets],
+  );
   const userDisplayName = useMemo(() => getUserDisplayName(user), [user]);
   const userInitials = useMemo(() => getUserInitials(user), [user]);
   const miscTasks = miscTasksByWeek[weekKey] ?? [];
@@ -1363,6 +1796,7 @@ function App() {
       ? ui.demoModeCopy
       : ui.enableCloudSync;
   const accountAvatarInitials = user ? userInitials : 'DN';
+  const resolvedTheme = theme === 'auto' ? resolveThemeByLocalTime(new Date(themeClock)) : theme;
 
   function clearSaveStateTimeout() {
     if (saveStateTimeoutRef.current !== null) {
@@ -1432,13 +1866,23 @@ function App() {
     window.localStorage.removeItem(LEGACY_MISC_STORAGE_PREFIX);
     window.localStorage.removeItem(LEGACY_DIRTY_WEEKS_STORAGE_KEY);
 
-    const raw = window.localStorage.getItem(STORAGE_PREFIX);
-    if (raw) {
+    const rawPlannerState = window.localStorage.getItem(PLANNER_STATE_STORAGE_KEY);
+    if (rawPlannerState) {
       try {
-        const parsed = JSON.parse(raw) as Record<string, Record<string, Array<Partial<TaskRow> & { completed?: boolean }>>>;
-        setSavedWeeks(normalizeSavedWeeks(parsed));
+        const parsed = JSON.parse(rawPlannerState) as PlannerState;
+        setPlannerState(normalizePlannerState(parsed));
       } catch {
-        window.localStorage.removeItem(STORAGE_PREFIX);
+        window.localStorage.removeItem(PLANNER_STATE_STORAGE_KEY);
+      }
+    } else {
+      const raw = window.localStorage.getItem(STORAGE_PREFIX);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as Record<string, Record<string, Array<Partial<TaskRow> & { completed?: boolean }>>>;
+          setPlannerState(buildPlannerStateFromLegacyWeeks(normalizeSavedWeeks(parsed)));
+        } catch {
+          window.localStorage.removeItem(STORAGE_PREFIX);
+        }
       }
     }
 
@@ -1449,6 +1893,16 @@ function App() {
         setMiscTasksByWeek(normalizeMiscTasks(parsed));
       } catch {
         window.localStorage.removeItem(MISC_STORAGE_PREFIX);
+      }
+    }
+
+    const rawOngoingProjects = window.localStorage.getItem(ONGOING_PROJECTS_STORAGE_KEY);
+    if (rawOngoingProjects) {
+      try {
+        const parsed = JSON.parse(rawOngoingProjects) as Array<Partial<OngoingProject>>;
+        setOngoingProjects(normalizeOngoingProjects(parsed));
+      } catch {
+        window.localStorage.removeItem(ONGOING_PROJECTS_STORAGE_KEY);
       }
     }
 
@@ -1481,6 +1935,7 @@ function App() {
       }
 
       setUser(nextUser);
+      setHasResolvedAuthState(true);
     });
 
     const {
@@ -1493,6 +1948,7 @@ function App() {
         }
 
         setUser(nextUser);
+        setHasResolvedAuthState(true);
       })();
     });
 
@@ -1503,8 +1959,47 @@ function App() {
   }, []);
 
   useEffect(() => {
-    savedWeeksRef.current = savedWeeks;
-  }, [savedWeeks]);
+    plannerStateRef.current = plannerState;
+  }, [plannerState]);
+
+  useEffect(() => {
+    if (!hasHydratedLocalCache || !hasResolvedAuthState || !isSupabaseConfigured || user) {
+      return;
+    }
+
+    if (!isPlannerStateEmpty(plannerState) || hasAnyMiscTasks(miscTasksByWeek) || ongoingProjects.length > 0) {
+      return;
+    }
+
+    const baseMonday = getMonday(new Date());
+    const demoOngoingProjects = buildDemoOngoingProjects();
+    setPlannerState(buildDemoPlannerState(baseMonday, demoOngoingProjects));
+    setMiscTasksByWeek(buildDemoMiscTasks(baseMonday));
+    setOngoingProjects(demoOngoingProjects);
+    setWeekStart(baseMonday);
+  }, [hasHydratedLocalCache, hasResolvedAuthState, user, plannerState, miscTasksByWeek, ongoingProjects]);
+
+  useEffect(() => {
+    if (!hasHydratedLocalCache || !hasResolvedAuthState || !isSupabaseConfigured || user) {
+      return;
+    }
+
+    if (!window.localStorage.getItem(THEME_STORAGE_KEY)) {
+      setTheme('auto');
+    }
+
+    if (!window.localStorage.getItem(LANGUAGE_STORAGE_KEY)) {
+      setLanguage('en');
+    }
+
+    if (!window.localStorage.getItem(TEXT_FORM_STORAGE_KEY)) {
+      setTextForm('formal');
+    }
+
+    if (!window.localStorage.getItem(GRIDLINE_MODE_STORAGE_KEY)) {
+      setGridlineMode('crazy-minimalist');
+    }
+  }, [hasHydratedLocalCache, hasResolvedAuthState, user]);
 
   useEffect(() => {
     if (!hasHydratedLocalCache || !isSupabaseConfigured || !supabase || !user) {
@@ -1639,14 +2134,17 @@ function App() {
       if (error) {
         setStorageError(error.message);
       } else if (!isWeekDirty(weekKey) && (weekMutationVersionRef.current[weekKey] ?? 0) === requestMutationVersion) {
-        setSavedWeeks((current) => ({
-          ...current,
-          [weekKey]: mergeLegacyDetailFields(
-            mapRecordsToWeek(weekStart, data ?? []),
-            current[weekKey],
-            usesLegacyTimeColumn || usesLegacyDetailColorColumn,
+        setPlannerState((current) =>
+          mergePlannerStateForWeek(
+            current,
+            weekKey,
+            mergeLegacyDetailFields(
+              mapRecordsToWeek(weekStart, data ?? []),
+              projectLegacyWeeksFromPlannerState(current)[weekKey],
+              usesLegacyTimeColumn || usesLegacyDetailColorColumn,
+            ),
           ),
-        }));
+        );
       }
 
       setIsWeekLoading(false);
@@ -1664,8 +2162,9 @@ function App() {
       return;
     }
 
+    window.localStorage.setItem(PLANNER_STATE_STORAGE_KEY, JSON.stringify(plannerState));
     window.localStorage.setItem(STORAGE_PREFIX, JSON.stringify(savedWeeks));
-  }, [hasHydratedLocalCache, savedWeeks]);
+  }, [hasHydratedLocalCache, plannerState, savedWeeks]);
 
   useEffect(() => {
     if (!hasHydratedLocalCache) {
@@ -1676,12 +2175,29 @@ function App() {
   }, [hasHydratedLocalCache, miscTasksByWeek]);
 
   useEffect(() => {
+    if (!hasHydratedLocalCache) {
+      return;
+    }
+
+    window.localStorage.setItem(ONGOING_PROJECTS_STORAGE_KEY, JSON.stringify(ongoingProjects));
+  }, [hasHydratedLocalCache, ongoingProjects]);
+
+  useEffect(() => {
     window.localStorage.setItem(PLANNER_VIEW_STORAGE_KEY, plannerView);
   }, [plannerView]);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.theme = resolvedTheme;
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [resolvedTheme, theme]);
+
+  useEffect(() => {
+    if (theme !== 'auto') {
+      return;
+    }
+
+    const interval = window.setInterval(() => setThemeClock(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
   }, [theme]);
 
   useEffect(() => {
@@ -1734,12 +2250,20 @@ function App() {
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
+      if (!mobileHeaderMenuRef.current?.contains(event.target as Node)) {
+        setIsMobileHeaderMenuOpen(false);
+      }
+
       if (!accountMenuRef.current?.contains(event.target as Node)) {
         setIsAccountMenuOpen(false);
       }
 
       if (!plannerViewMenuRef.current?.contains(event.target as Node)) {
         setIsPlannerViewMenuOpen(false);
+      }
+
+      if (!ongoingProjectsMenuRef.current?.contains(event.target as Node)) {
+        setIsOngoingProjectsOpen(false);
       }
 
       if (!searchMenuRef.current?.contains(event.target as Node)) {
@@ -1749,8 +2273,10 @@ function App() {
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
+        setIsMobileHeaderMenuOpen(false);
         setIsAccountMenuOpen(false);
         setIsPlannerViewMenuOpen(false);
+        setIsOngoingProjectsOpen(false);
         setIsSearchOpen(false);
       }
     }
@@ -1857,6 +2383,296 @@ function App() {
     setVisibleYear(weekStart.getFullYear());
     setVisibleMonthDate(new Date(weekStart.getFullYear(), weekStart.getMonth(), 1));
   }, [weekStart]);
+
+  function getPlacementsForDay(state: PlannerState, dayKey: string) {
+    return [...getPlannerPlacementsForDay(state, dayKey)].sort((left, right) => left.rowIndex - right.rowIndex);
+  }
+
+  function reindexPlacements(dayKey: string, placements: PlannerPlacement[]) {
+    const context = buildPlacementContext(dayKey);
+    return placements.map((placement, rowIndex) => ({
+      ...placement,
+      dayKey,
+      weekStart: context.weekStart,
+      dayIndex: context.dayIndex,
+      rowIndex,
+      updatedAt: new Date().toISOString(),
+    }));
+  }
+
+  function isPlannerTaskEmpty(task: PlannerTask) {
+    return (
+      task.title.trim() === '' &&
+      task.notes.trim() === '' &&
+      task.ongoingProjectId === null &&
+      task.status === 'none' &&
+      task.time.trim() === ''
+    );
+  }
+
+  function persistPlannerState(nextState: PlannerState) {
+    const nextSavedWeeks = projectLegacyWeeksFromPlannerState(nextState);
+    plannerStateRef.current = nextState;
+    setPlannerState(nextState);
+    window.localStorage.setItem(PLANNER_STATE_STORAGE_KEY, JSON.stringify(nextState));
+    window.localStorage.setItem(STORAGE_PREFIX, JSON.stringify(nextSavedWeeks));
+  }
+
+  function commitPlannerMutation(nextState: PlannerState, changedDayKeys: string[]) {
+    if (changedDayKeys.length === 0) {
+      return;
+    }
+
+    const changedWeekKeys = new Set(changedDayKeys.map((dayKey) => getWeekKeyForDayKey(dayKey)));
+    changedWeekKeys.forEach((changedWeekKey) => markWeekMutated(changedWeekKey));
+
+    persistPlannerState(nextState);
+
+    if (supabase && user) {
+      changedDayKeys.forEach((dayKey) => {
+        queueDaySync(dayKey, projectRowsForDay(nextState, dayKey));
+      });
+    }
+  }
+
+  function createPlannerTaskAtPlacement(dayKey: string, targetIndex: number, seed?: Partial<PlannerTask>) {
+    const current = plannerStateRef.current;
+    const currentPlacements = getPlacementsForDay(current, dayKey);
+    const insertionIndex = Math.max(0, Math.min(targetIndex, currentPlacements.length));
+
+    if (currentPlacements.length >= MAX_ROW_COUNT) {
+      return null;
+    }
+
+    const hasContent = Boolean(
+      seed &&
+        ((typeof seed.title === 'string' && seed.title.trim()) ||
+          (typeof seed.notes === 'string' && seed.notes.trim()) ||
+          (typeof seed.ongoingProjectId === 'string' && seed.ongoingProjectId) ||
+          seed.status === 'done' ||
+          (typeof seed.status === 'string' && seed.status && seed.status !== 'none') ||
+          (typeof seed.time === 'string' && seed.time.trim())),
+    );
+    const taskId = hasContent ? createEntityId('task') : null;
+    const placement = {
+      ...createEmptyPlacement(dayKey, insertionIndex),
+      id: createEntityId('placement'),
+      taskId,
+    };
+
+    const nextTasks = { ...current.tasks };
+    if (taskId) {
+      nextTasks[taskId] = {
+        id: taskId,
+        title: seed?.title ?? '',
+        notes: seed?.notes ?? '',
+        ongoingProjectId: seed?.ongoingProjectId ?? null,
+        status: seed?.status ?? 'none',
+        time: seed?.time ?? '',
+        detailColor: seed?.detailColor ?? 'default',
+        priorityDismissed: seed?.priorityDismissed ?? false,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    const nextPlacementsByDay = {
+      ...current.placementsByDay,
+      [dayKey]: reindexPlacements(dayKey, [...currentPlacements.slice(0, insertionIndex), placement, ...currentPlacements.slice(insertionIndex)]),
+    };
+
+    const nextState = {
+      tasks: nextTasks,
+      placementsByDay: nextPlacementsByDay,
+    };
+
+    commitPlannerMutation(nextState, [dayKey]);
+    return placement.id;
+  }
+
+  function updatePlannerTask(dayKey: string, placementId: string, fields: Partial<PlannerTask>) {
+    const current = plannerStateRef.current;
+    const placements = getPlacementsForDay(current, dayKey);
+    const placement = placements.find((candidate) => candidate.id === placementId);
+
+    if (!placement) {
+      return;
+    }
+
+    let nextTasks = { ...current.tasks };
+    let nextPlacements = placements;
+
+    if (!placement.taskId) {
+      const draftTask: PlannerTask = {
+        id: createEntityId('task'),
+        title: '',
+        notes: '',
+        ongoingProjectId: null,
+        status: 'none',
+        time: '',
+        detailColor: 'default',
+        priorityDismissed: false,
+        updatedAt: new Date().toISOString(),
+      };
+      const materializedTask = {
+        ...draftTask,
+        ...fields,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (isPlannerTaskEmpty(materializedTask)) {
+        return;
+      }
+
+      nextTasks[materializedTask.id] = materializedTask;
+      nextPlacements = placements.map((candidate) =>
+        candidate.id === placementId ? { ...candidate, taskId: materializedTask.id, updatedAt: new Date().toISOString() } : candidate,
+      );
+    } else {
+      const currentTask = current.tasks[placement.taskId];
+      if (!currentTask) {
+        return;
+      }
+
+      const nextTask = {
+        ...currentTask,
+        ...fields,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (isPlannerTaskEmpty(nextTask)) {
+        delete nextTasks[currentTask.id];
+        nextPlacements = placements.map((candidate) =>
+          candidate.id === placementId ? { ...candidate, taskId: null, updatedAt: new Date().toISOString() } : candidate,
+        );
+      } else {
+        nextTasks[currentTask.id] = nextTask;
+      }
+    }
+
+    const nextState = {
+      tasks: nextTasks,
+      placementsByDay: {
+        ...current.placementsByDay,
+        [dayKey]: reindexPlacements(dayKey, nextPlacements),
+      },
+    };
+
+    commitPlannerMutation(nextState, [dayKey]);
+  }
+
+  function deletePlannerTaskAtPlacement(dayKey: string, placementId: string) {
+    const current = plannerStateRef.current;
+    const placements = getPlacementsForDay(current, dayKey);
+
+    if (placements.length <= ROW_COUNT) {
+      return;
+    }
+
+    const targetPlacement = placements.find((placement) => placement.id === placementId);
+    if (!targetPlacement) {
+      return;
+    }
+
+    const nextTasks = { ...current.tasks };
+    if (targetPlacement.taskId) {
+      delete nextTasks[targetPlacement.taskId];
+    }
+
+    const filteredPlacements = placements.filter((placement) => placement.id !== placementId);
+    const nextPlacements =
+      filteredPlacements.length > 0 ? reindexPlacements(dayKey, filteredPlacements) : [createEmptyPlacement(dayKey, 0)];
+
+    const nextState = {
+      tasks: nextTasks,
+      placementsByDay: {
+        ...current.placementsByDay,
+        [dayKey]: nextPlacements,
+      },
+    };
+
+    commitPlannerMutation(nextState, [dayKey]);
+
+    if (targetPlacement.taskId) {
+      const deletedTask = current.tasks[targetPlacement.taskId];
+      if (deletedTask?.ongoingProjectId) {
+        deleteOngoingProject(deletedTask.ongoingProjectId);
+      }
+    }
+  }
+
+  function reorderPlannerPlacement(dayKey: string, sourcePlacementId: string, targetIndex: number) {
+    const current = plannerStateRef.current;
+    const placements = getPlacementsForDay(current, dayKey);
+    const sourceIndex = placements.findIndex((placement) => placement.id === sourcePlacementId);
+    if (sourceIndex < 0) {
+      return;
+    }
+
+    const boundedTargetIndex = Math.max(0, Math.min(targetIndex, placements.length - 1));
+    if (sourceIndex === boundedTargetIndex) {
+      return;
+    }
+
+    const nextPlacements = [...placements];
+    const [movedPlacement] = nextPlacements.splice(sourceIndex, 1);
+    nextPlacements.splice(boundedTargetIndex, 0, movedPlacement);
+
+    commitPlannerMutation(
+      {
+        tasks: current.tasks,
+        placementsByDay: {
+          ...current.placementsByDay,
+          [dayKey]: reindexPlacements(dayKey, nextPlacements),
+        },
+      },
+      [dayKey],
+    );
+  }
+
+  function movePlannerTaskAcrossWeeks(sourceDayKey: string, placementId: string, targetDayKey: string, targetIndex: number) {
+    const current = plannerStateRef.current;
+    const sourcePlacements = getPlacementsForDay(current, sourceDayKey);
+    const sourceIndex = sourcePlacements.findIndex((placement) => placement.id === placementId);
+    if (sourceIndex < 0) {
+      return;
+    }
+
+    const targetPlacements = getPlacementsForDay(current, targetDayKey);
+    if (targetPlacements.length >= MAX_ROW_COUNT) {
+      return;
+    }
+
+    const [movedPlacement] = sourcePlacements.splice(sourceIndex, 1);
+    const nextSourcePlacements =
+      sourcePlacements.length > 0 ? reindexPlacements(sourceDayKey, sourcePlacements) : [createEmptyPlacement(sourceDayKey, 0)];
+    const boundedTargetIndex = Math.max(0, Math.min(targetIndex, targetPlacements.length));
+    const nextTargetPlacements = reindexPlacements(targetDayKey, [
+      ...targetPlacements.slice(0, boundedTargetIndex),
+      { ...movedPlacement, dayKey: targetDayKey },
+      ...targetPlacements.slice(boundedTargetIndex),
+    ]);
+
+    commitPlannerMutation(
+      {
+        tasks: current.tasks,
+        placementsByDay: {
+          ...current.placementsByDay,
+          [sourceDayKey]: nextSourcePlacements,
+          [targetDayKey]: nextTargetPlacements,
+        },
+      },
+      sourceDayKey === targetDayKey ? [sourceDayKey] : [sourceDayKey, targetDayKey],
+    );
+  }
+
+  function movePlannerTaskWithinWeek(sourceDayKey: string, placementId: string, targetDayKey: string, targetIndex: number) {
+    if (sourceDayKey === targetDayKey) {
+      reorderPlannerPlacement(sourceDayKey, placementId, targetIndex);
+      return;
+    }
+
+    movePlannerTaskAcrossWeeks(sourceDayKey, placementId, targetDayKey, targetIndex);
+  }
 
   async function syncDayRows(dayKey: string, rows: TaskRow[]) {
     if (!supabase || !user) {
@@ -1973,58 +2789,12 @@ function App() {
   }
 
   function addRow(dayKey: string) {
-    markWeekMutated(weekKey);
-    setSavedWeeks((current) => {
-      const currentWeek = current[weekKey] ?? {};
-      const currentRows = currentWeek[dayKey] ?? createEmptyRows(dayKey);
-
-      if (currentRows.length >= MAX_ROW_COUNT) {
-        return current;
-      }
-
-      const nextRow = createEmptyRow(dayKey, currentRows.length);
-      const nextState = {
-        ...current,
-        [weekKey]: {
-          ...currentWeek,
-          [dayKey]: [...currentRows, nextRow],
-        },
-      };
-
-      window.localStorage.setItem(STORAGE_PREFIX, JSON.stringify(nextState));
-      return nextState;
-    });
+    const currentPlacements = getPlacementsForDay(plannerStateRef.current, dayKey);
+    createPlannerTaskAtPlacement(dayKey, currentPlacements.length);
   }
 
   function performDeleteRow(dayKey: string, rowId: string) {
-    markWeekMutated(weekKey);
-    const currentWeek = savedWeeks[weekKey] ?? {};
-    const currentRows = currentWeek[dayKey] ?? createEmptyRows(dayKey);
-
-    if (currentRows.length <= ROW_COUNT) {
-      return;
-    }
-
-    const filteredRows = currentRows.filter((row) => row.id !== rowId);
-    const remainingRows = trimTrailingEmptyRows(dayKey, filteredRows);
-
-    setSavedWeeks((current) => {
-      const week = current[weekKey] ?? {};
-      const nextState = {
-        ...current,
-        [weekKey]: {
-          ...week,
-          [dayKey]: remainingRows,
-        },
-      };
-
-      window.localStorage.setItem(STORAGE_PREFIX, JSON.stringify(nextState));
-      return nextState;
-    });
-
-    if (supabase && user) {
-      queueDaySync(dayKey, remainingRows);
-    }
+    deletePlannerTaskAtPlacement(dayKey, rowId);
   }
 
   function deleteRow(dayKey: string, rowId: string) {
@@ -2045,11 +2815,14 @@ function App() {
   }
 
   function updateRow(dayKey: string, rowId: string, field: keyof TaskRow, value: string) {
-    updateRowFields(dayKey, rowId, { [field]: value } as Partial<TaskRow>);
+    if (field === 'id' || field === 'taskId') {
+      return;
+    }
+    updatePlannerTask(dayKey, rowId, { [field]: value } as Partial<PlannerTask>);
   }
 
   function updateTaskTitle(dayKey: string, rowId: string, nextTitle: string) {
-    const currentWeek = savedWeeksRef.current[weekKey] ?? {};
+    const currentWeek = savedWeeks[weekKey] ?? {};
     const currentRows = currentWeek[dayKey] ?? createEmptyRows(dayKey);
     const row = currentRows.find((candidate) => candidate.id === rowId);
 
@@ -2062,9 +2835,10 @@ function App() {
     const isNowCleared = nextTitle.trim() === '';
 
     if (wasEmpty && isNowFilled) {
-      updateRowFields(dayKey, rowId, {
+      updatePlannerTask(dayKey, rowId, {
         title: nextTitle,
         notes: '',
+        ongoingProjectId: null,
         status: 'none',
         time: '',
         detailColor: 'default',
@@ -2074,9 +2848,13 @@ function App() {
     }
 
     if (isNowCleared) {
-      updateRowFields(dayKey, rowId, {
+      if (row.ongoingProjectId) {
+        deleteOngoingProject(row.ongoingProjectId);
+      }
+      updatePlannerTask(dayKey, rowId, {
         title: nextTitle,
         notes: '',
+        ongoingProjectId: null,
         status: 'none',
         time: '',
         detailColor: 'default',
@@ -2089,41 +2867,10 @@ function App() {
   }
 
   function updateRowFields(dayKey: string, rowId: string, fields: Partial<TaskRow>) {
-    const currentWeekState = savedWeeksRef.current[weekKey] ?? {};
-    const currentRowsState = currentWeekState[dayKey] ?? createEmptyRows(dayKey);
-    const existingRow = currentRowsState.find((row) => row.id === rowId);
-
-    if (!existingRow) {
-      return;
-    }
-
-    const updatedRow: TaskRow = {
-      ...existingRow,
-      ...fields,
-    };
-
-    const nextRowsSnapshot = trimTrailingEmptyRows(
-      dayKey,
-      currentRowsState.map((row) => (row.id === rowId ? updatedRow : row)),
-    );
-    const nextWeekState = {
-      ...currentWeekState,
-      [dayKey]: nextRowsSnapshot,
-    };
-    const nextState = {
-      ...savedWeeksRef.current,
-      [weekKey]: nextWeekState,
-    };
-
-    markWeekMutated(weekKey);
-
-    savedWeeksRef.current = nextState;
-    setSavedWeeks(nextState);
-    window.localStorage.setItem(STORAGE_PREFIX, JSON.stringify(nextState));
-
-    if (supabase && user) {
-      queueDaySync(dayKey, nextRowsSnapshot);
-    }
+    const nextFields = { ...fields };
+    delete (nextFields as Partial<TaskRow>).id;
+    delete (nextFields as Partial<TaskRow>).taskId;
+    updatePlannerTask(dayKey, rowId, nextFields as Partial<PlannerTask>);
   }
 
   function openNotesEditor(dayKey: string, row: TaskRow) {
@@ -2132,6 +2879,7 @@ function App() {
       rowId: row.id,
       taskTitle: row.title,
       notes: sanitizeNoteHtml(row.notes),
+      ongoingProjectId: row.ongoingProjectId,
       status: row.status,
       time: row.time,
       detailColor: row.detailColor,
@@ -2172,20 +2920,26 @@ function App() {
     setActivePriorityPicker(null);
   }
 
-  function updateActiveNotes(notes: string) {
-    const sanitizedNotes = sanitizeNoteHtml(notes);
-    setActiveNotesEditor((current) => (current ? { ...current, notes: sanitizedNotes } : current));
-    if (activeNotesEditor) {
-      updateRow(activeNotesEditor.dayKey, activeNotesEditor.rowId, 'notes', sanitizedNotes);
+function updateActiveNotes(notes: string) {
+  const sanitizedNotes = sanitizeNoteHtml(notes);
+  setActiveNotesEditor((current) => (current ? { ...current, notes: sanitizedNotes } : current));
+  if (activeNotesEditor) {
+    updateRow(activeNotesEditor.dayKey, activeNotesEditor.rowId, 'notes', sanitizedNotes);
+    if (activeNotesEditor.ongoingProjectId) {
+      updateOngoingProject(activeNotesEditor.ongoingProjectId, 'notes', sanitizedNotes);
     }
   }
+}
 
-  function updateActiveTaskTitle(title: string) {
-    setActiveNotesEditor((current) => (current ? { ...current, taskTitle: title } : current));
-    if (activeNotesEditor) {
-      updateRow(activeNotesEditor.dayKey, activeNotesEditor.rowId, 'title', title);
+function updateActiveTaskTitle(title: string) {
+  setActiveNotesEditor((current) => (current ? { ...current, taskTitle: title } : current));
+  if (activeNotesEditor) {
+    updateRow(activeNotesEditor.dayKey, activeNotesEditor.rowId, 'title', title);
+    if (activeNotesEditor.ongoingProjectId) {
+      updateOngoingProject(activeNotesEditor.ongoingProjectId, 'title', title);
     }
   }
+}
 
   function saveCustomStatus(status: string, color: DetailColor) {
     if (!activeStatusEditor) {
@@ -2264,6 +3018,102 @@ function App() {
     setMiscTaskInput('');
   }
 
+  function syncRowsForOngoingProject(
+    projectId: string,
+    updates: Partial<Pick<TaskRow, 'title' | 'notes' | 'ongoingProjectId'>>,
+  ) {
+    const current = plannerStateRef.current;
+    const nextTasks = { ...current.tasks };
+    const changedTaskIds = new Set<string>();
+    let didChange = false;
+
+    Object.values(nextTasks).forEach((task) => {
+      if (task.ongoingProjectId !== projectId) {
+        return;
+      }
+
+      didChange = true;
+      if (updates.title !== undefined) {
+        task.title = updates.title;
+      }
+      if (updates.notes !== undefined) {
+        task.notes = updates.notes;
+      }
+      if (updates.ongoingProjectId !== undefined) {
+        task.ongoingProjectId = updates.ongoingProjectId;
+      }
+      task.updatedAt = new Date().toISOString();
+      changedTaskIds.add(task.id);
+    });
+
+    if (!didChange) {
+      return;
+    }
+
+    const changedDayKeys = Object.entries(current.placementsByDay)
+      .filter(([, placements]) => placements.some((placement) => placement.taskId && changedTaskIds.has(placement.taskId)))
+      .map(([dayKey]) => dayKey);
+
+    commitPlannerMutation(
+      {
+        tasks: nextTasks,
+        placementsByDay: current.placementsByDay,
+      },
+      changedDayKeys,
+    );
+
+    setActiveNotesEditor((current) =>
+      current && current.ongoingProjectId === projectId
+        ? {
+            ...current,
+            ...(updates.title !== undefined ? { taskTitle: updates.title } : {}),
+            ...(updates.notes !== undefined ? { notes: updates.notes } : {}),
+            ...(updates.ongoingProjectId !== undefined ? { ongoingProjectId: updates.ongoingProjectId } : {}),
+          }
+        : current,
+    );
+
+  }
+
+  function updateOngoingProject(projectId: string, field: 'title' | 'notes', value: string) {
+    setOngoingProjects((current) =>
+      current.map((project) => (project.id === projectId ? { ...project, [field]: value } : project)),
+    );
+    syncRowsForOngoingProject(projectId, { [field]: value } as Partial<Pick<TaskRow, 'title' | 'notes'>>);
+  }
+
+  function deleteOngoingProject(projectId: string) {
+    setOngoingProjects((current) => current.filter((project) => project.id !== projectId));
+    syncRowsForOngoingProject(projectId, { ongoingProjectId: null });
+  }
+
+  function toggleOngoingFromNotes() {
+    if (!activeNotesEditor) {
+      return;
+    }
+
+    if (activeNotesEditor.ongoingProjectId) {
+      deleteOngoingProject(activeNotesEditor.ongoingProjectId);
+      setActiveNotesEditor((current) => (current ? { ...current, ongoingProjectId: null } : current));
+      updateRowFields(activeNotesEditor.dayKey, activeNotesEditor.rowId, {
+        ongoingProjectId: null,
+      });
+      return;
+    }
+
+    const nextProject = {
+      id: createOngoingProject().id,
+      title: activeNotesEditor.taskTitle,
+      notes: activeNotesEditor.notes,
+    };
+
+    setOngoingProjects((current) => [...current, nextProject]);
+    setActiveNotesEditor((current) => (current ? { ...current, ongoingProjectId: nextProject.id } : current));
+    updateRowFields(activeNotesEditor.dayKey, activeNotesEditor.rowId, {
+      ongoingProjectId: nextProject.id,
+    });
+  }
+
   function deleteMiscTask(taskId: string) {
     setMiscTasksByWeek((current) => ({
       ...current,
@@ -2295,45 +3145,16 @@ function App() {
       return;
     }
 
-    const currentWeek = savedWeeksRef.current[weekKey] ?? {};
-    const currentRows = currentWeek[dayKey] ?? createEmptyRows(dayKey);
+    const currentRows = projectRowsForDay(plannerStateRef.current, dayKey);
     const targetIndex = currentRows.findIndex((row) => row.id === rowId);
 
     if (targetIndex < 0) {
       return;
     }
 
-    const nextRows = insertRowIntoDay(
-      dayKey,
-      {
-        ...createEmptyRow(dayKey, targetIndex),
-        title: task.text,
-      },
-      currentRows,
-      targetIndex,
-    );
-
-    if (!nextRows) {
-      return;
-    }
-
-    markWeekMutated(weekKey);
-
-    const nextState = {
-      ...savedWeeksRef.current,
-      [weekKey]: {
-        ...currentWeek,
-        [dayKey]: nextRows,
-      },
-    };
-
-    savedWeeksRef.current = nextState;
-    setSavedWeeks(nextState);
-    window.localStorage.setItem(STORAGE_PREFIX, JSON.stringify(nextState));
-
-    if (supabase && user) {
-      queueDaySync(dayKey, nextRows);
-    }
+    createPlannerTaskAtPlacement(dayKey, targetIndex, {
+      title: task.text,
+    });
 
     setMiscTasksByWeek((current) => ({
       ...current,
@@ -2343,14 +3164,12 @@ function App() {
   }
 
   function moveTaskRow(sourceDayKey: string, sourceRowId: string, targetDayKey: string, targetRowId: string) {
-    markWeekMutated(weekKey);
     if (sourceDayKey === targetDayKey && sourceRowId === targetRowId) {
       return;
     }
 
-    const currentWeek = savedWeeks[weekKey] ?? {};
-    const sourceRows = [...(currentWeek[sourceDayKey] ?? createEmptyRows(sourceDayKey))];
-    const targetRows = sourceDayKey === targetDayKey ? sourceRows : [...(currentWeek[targetDayKey] ?? createEmptyRows(targetDayKey))];
+    const sourceRows = projectRowsForDay(plannerStateRef.current, sourceDayKey);
+    const targetRows = projectRowsForDay(plannerStateRef.current, targetDayKey);
     const sourceIndex = sourceRows.findIndex((row) => row.id === sourceRowId);
     const targetIndex = targetRows.findIndex((row) => row.id === targetRowId);
 
@@ -2358,48 +3177,10 @@ function App() {
       return;
     }
 
-    let nextSourceRows = sourceRows;
-    let nextTargetRows = targetRows;
-
     if (sourceDayKey === targetDayKey) {
-      // Same-day drag keeps the row content intact and only changes visual order.
-      const [movedRow] = nextSourceRows.splice(sourceIndex, 1);
-      nextSourceRows.splice(targetIndex, 0, movedRow);
-      nextSourceRows = reindexRows(sourceDayKey, nextSourceRows);
+      reorderPlannerPlacement(sourceDayKey, sourceRowId, targetIndex);
     } else {
-      const sourceRow = sourceRows[sourceIndex];
-      nextTargetRows = insertRowIntoDay(targetDayKey, sourceRow, targetRows, targetIndex) ?? targetRows;
-
-      if (nextTargetRows === targetRows) {
-        return;
-      }
-
-      nextSourceRows = trimTrailingEmptyRows(
-        sourceDayKey,
-        sourceRows.map((row, index) => (index === sourceIndex ? createEmptyRow(sourceDayKey, index) : row)),
-      );
-    }
-
-    setSavedWeeks((current) => {
-      const week = current[weekKey] ?? {};
-      const nextState = {
-        ...current,
-        [weekKey]: {
-          ...week,
-          [sourceDayKey]: nextSourceRows,
-          ...(sourceDayKey === targetDayKey ? {} : { [targetDayKey]: nextTargetRows }),
-        },
-      };
-
-      window.localStorage.setItem(STORAGE_PREFIX, JSON.stringify(nextState));
-      return nextState;
-    });
-
-    if (supabase && user) {
-      queueDaySync(sourceDayKey, nextSourceRows);
-      if (sourceDayKey !== targetDayKey) {
-        queueDaySync(targetDayKey, nextTargetRows);
-      }
+      movePlannerTaskWithinWeek(sourceDayKey, sourceRowId, targetDayKey, targetIndex);
     }
 
     setDraggedTaskRow(null);
@@ -2407,8 +3188,7 @@ function App() {
 
   function moveTaskRowToTargetWeek(sourceDayKey: string, sourceRowId: string, targetWeekKey: string) {
     const sourceWeekKey = getWeekKeyForDayKey(sourceDayKey);
-    const sourceWeek = savedWeeksRef.current[sourceWeekKey] ?? {};
-    const sourceRows = [...(sourceWeek[sourceDayKey] ?? createEmptyRows(sourceDayKey))];
+    const sourceRows = projectRowsForDay(plannerStateRef.current, sourceDayKey);
     const sourceIndex = sourceRows.findIndex((row) => row.id === sourceRowId);
 
     if (sourceIndex < 0) {
@@ -2430,42 +3210,11 @@ function App() {
     }
 
     const targetDayKey = getDayKeyForWeekAndIndex(targetWeekKey, sourceDayIndex);
-    const targetWeek = savedWeeksRef.current[targetWeekKey] ?? {};
-    const targetRows = targetWeek[targetDayKey] ?? createEmptyRows(targetDayKey);
-    const nextTargetRows = moveRowIntoDay(targetDayKey, sourceRow, targetRows);
+    const targetPlacements = getPlacementsForDay(plannerStateRef.current, targetDayKey);
+    const targetIndex =
+      targetPlacements.length === 1 && targetPlacements[0].taskId === null ? 0 : targetPlacements.length;
 
-    if (!nextTargetRows) {
-      return;
-    }
-
-    const nextSourceRows = trimTrailingEmptyRows(
-      sourceDayKey,
-      sourceRows.map((row, index) => (index === sourceIndex ? createEmptyRow(sourceDayKey, index) : row)),
-    );
-
-    markWeekMutated(sourceWeekKey);
-    markWeekMutated(targetWeekKey);
-
-    const nextState = {
-      ...savedWeeksRef.current,
-      [sourceWeekKey]: {
-        ...sourceWeek,
-        [sourceDayKey]: nextSourceRows,
-      },
-      [targetWeekKey]: {
-        ...targetWeek,
-        [targetDayKey]: nextTargetRows,
-      },
-    };
-
-    savedWeeksRef.current = nextState;
-    setSavedWeeks(nextState);
-    window.localStorage.setItem(STORAGE_PREFIX, JSON.stringify(nextState));
-
-    if (supabase && user) {
-      queueDaySync(sourceDayKey, nextSourceRows);
-      queueDaySync(targetDayKey, nextTargetRows);
-    }
+    movePlannerTaskAcrossWeeks(sourceDayKey, sourceRowId, targetDayKey, targetIndex);
 
     setDraggedTaskRow(null);
   }
@@ -2497,6 +3246,17 @@ function App() {
     setActiveSearchRowId(result.rowId);
     setSearchQuery('');
     setIsSearchOpen(false);
+  }
+
+  function jumpToOngoingProject(projectId: string) {
+    const target = ongoingProjectTargets.get(projectId);
+    if (!target) {
+      return;
+    }
+
+    setWeekStart(parseWeekKey(target.weekKey));
+    setActiveSearchRowId(target.rowId);
+    setIsOngoingProjectsOpen(false);
   }
 
   useEffect(() => {
@@ -2555,7 +3315,7 @@ function App() {
     }
 
     await supabase.auth.signOut();
-    setSavedWeeks({});
+    setPlannerState(createEmptyPlannerState());
     setAuthMessage('');
     setShowInviteOnlyAuth(false);
   }
@@ -2585,70 +3345,297 @@ function App() {
       {showWeekLoadingBanner ? <p className="status-banner">{ui.loadingWeek}</p> : null}
 
       <header className="top-actions">
-        <div className="top-toolbar">
-          <div className="top-toolbar-controls">
-            <div className="top-toolbar-identity">
-              <div className="today-button-shell">
-                <button
-                  type="button"
-                  className={`nav-button home-button ${draggedTaskRow ? 'is-drag-target' : ''}`}
-                  onClick={resetToCurrentWeek}
-                  onDragOver={(event) => {
-                    if (!draggedTaskRow) {
-                      return;
-                    }
+        <div className={`top-toolbar ${isMobileHeaderMenuOpen ? 'is-mobile-menu-open' : ''}`}>
+          <div className="top-toolbar-brand">{ui.appName}</div>
 
-                    event.preventDefault();
-                    event.dataTransfer.dropEffect = 'move';
-                  }}
-                  onDrop={(event) => {
-                    if (!draggedTaskRow) {
-                      return;
-                    }
+          <div className="top-toolbar-menu-shell" ref={mobileHeaderMenuRef}>
+            <button
+              type="button"
+              className="nav-button mobile-header-menu-button"
+              onClick={() => setIsMobileHeaderMenuOpen((current) => !current)}
+              aria-expanded={isMobileHeaderMenuOpen}
+              aria-label={ui.menu}
+            >
+              <span className="mobile-header-menu-bars" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </span>
+            </button>
 
-                    event.preventDefault();
-                    const plannerRow = event.dataTransfer.getData('application/x-dnevnik-task-row');
+            <div className="top-toolbar-menu-content">
+              <div className="top-toolbar-controls">
+                <div className="top-toolbar-identity">
+                  <div className="today-button-shell">
+                    <button
+                      type="button"
+                      className={`nav-button home-button ${draggedTaskRow ? 'is-drag-target' : ''}`}
+                      onClick={() => {
+                        resetToCurrentWeek();
+                        setIsMobileHeaderMenuOpen(false);
+                      }}
+                      onDragOver={(event) => {
+                        if (!draggedTaskRow) {
+                          return;
+                        }
 
-                    if (plannerRow) {
-                      try {
-                        const source = JSON.parse(plannerRow) as DraggedTaskRow;
-                        moveTaskRowToTargetWeek(source.dayKey, source.rowId, todayWeekKey);
-                      } catch {
-                        // Ignore invalid drag payloads.
-                      }
-                    } else {
-                      moveTaskRowToTargetWeek(draggedTaskRow.dayKey, draggedTaskRow.rowId, todayWeekKey);
-                    }
-                  }}
-                >
-                  {ui.today}
-                </button>
-                {draggedTaskRow ? <span className="today-button-hint">{ui.dragToTodayButtonHint}</span> : null}
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = 'move';
+                      }}
+                      onDrop={(event) => {
+                        if (!draggedTaskRow) {
+                          return;
+                        }
+
+                        event.preventDefault();
+                        const plannerRow = event.dataTransfer.getData('application/x-dnevnik-task-row');
+
+                        if (plannerRow) {
+                          try {
+                            const source = JSON.parse(plannerRow) as DraggedTaskRow;
+                            moveTaskRowToTargetWeek(source.dayKey, source.rowId, todayWeekKey);
+                          } catch {
+                            // Ignore invalid drag payloads.
+                          }
+                        } else {
+                          moveTaskRowToTargetWeek(draggedTaskRow.dayKey, draggedTaskRow.rowId, todayWeekKey);
+                        }
+                      }}
+                    >
+                      {ui.today}
+                    </button>
+                    {draggedTaskRow ? <span className="today-button-hint">{ui.dragToTodayButtonHint}</span> : null}
+                  </div>
+
+                  <div className="ongoing-projects-menu-shell" ref={ongoingProjectsMenuRef}>
+                    <button
+                      type="button"
+                      className="nav-button ongoing-projects-trigger"
+                      onClick={() => setIsOngoingProjectsOpen((current) => !current)}
+                      aria-expanded={isOngoingProjectsOpen}
+                      aria-label={ui.ongoingProjectsTitle}
+                    >
+                      {ui.ongoingProjects}
+                    </button>
+                    {isOngoingProjectsOpen ? (
+                      <OngoingProjectsDropdown
+                        ui={ui}
+                        projects={linkedOngoingProjects}
+                        targets={ongoingProjectTargets}
+                        onPickProject={jumpToOngoingProject}
+                      />
+                    ) : null}
+                  </div>
+
+                  <div className="search-menu-shell" ref={searchMenuRef}>
+                    <button type="button" className="nav-button search-trigger-button" onClick={() => setIsSearchOpen((current) => !current)}>
+                      {ui.search}
+                    </button>
+                    {isSearchOpen ? (
+                      <SearchDropdown
+                        ui={ui}
+                        query={searchQuery}
+                        results={searchResults}
+                        onClose={() => {
+                          setIsSearchOpen(false);
+                          setSearchQuery('');
+                        }}
+                        onChangeQuery={setSearchQuery}
+                        onPickResult={jumpToSearchResult}
+                      />
+                    ) : null}
+                  </div>
+                </div>
               </div>
 
-              <div className="search-menu-shell" ref={searchMenuRef}>
-                <button type="button" className="nav-button search-trigger-button" onClick={() => setIsSearchOpen((current) => !current)}>
-                  {ui.search}
-                </button>
-                {isSearchOpen ? (
-                  <SearchDropdown
-                    ui={ui}
-                    query={searchQuery}
-                    results={searchResults}
-                    onClose={() => {
-                      setIsSearchOpen(false);
-                      setSearchQuery('');
-                    }}
-                    onChangeQuery={setSearchQuery}
-                    onPickResult={jumpToSearchResult}
-                  />
+              <div className="top-toolbar-summary">
+                {isSupabaseConfigured && user && saveState !== 'idle' ? (
+                  <span className={`save-indicator save-indicator-${saveState}`}>
+                    {saveState === 'saving' ? ui.savingStatus : ui.savedStatus}
+                  </span>
                 ) : null}
+
+                {isSupabaseConfigured && !user ? (
+                  <button
+                    type="button"
+                    className="nav-button demo-signup-button"
+                    onClick={() => {
+                      setShowInviteOnlyAuth(true);
+                      setIsMobileHeaderMenuOpen(false);
+                    }}
+                  >
+                    {ui.signUp}
+                  </button>
+                ) : null}
+
+                <div>
+                  <div className="planner-view-menu-shell" ref={plannerViewMenuRef}>
+                    <button
+                      type="button"
+                      className="planner-view-trigger"
+                      onClick={() => setIsPlannerViewMenuOpen((current) => !current)}
+                      aria-label={ui.plannerSettings}
+                      aria-expanded={isPlannerViewMenuOpen}
+                    >
+                      {plannerView === 'yearly' ? ui.yearlyPlanner : plannerView === 'monthly' ? ui.monthlyPlanner : ui.weeklyPlanner}
+                    </button>
+
+                    {isPlannerViewMenuOpen ? (
+                      <div className="planner-view-menu" role="menu" aria-label={ui.plannerSettings}>
+                        {(['weekly', 'monthly', 'yearly'] as PlannerView[]).map((view) => (
+                          <button
+                            key={view}
+                            type="button"
+                            className={`priority-menu-item planner-view-menu-item ${plannerView === view ? 'is-active' : ''}`}
+                            onClick={() => {
+                              setPlannerView(view);
+                              setIsPlannerViewMenuOpen(false);
+                              setIsMobileHeaderMenuOpen(false);
+                            }}
+                          >
+                            {view === 'yearly' ? ui.yearlyPlanner : view === 'monthly' ? ui.monthlyPlanner : ui.weeklyPlanner}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="account-menu-shell" ref={accountMenuRef}>
+                  <button
+                    type="button"
+                    className={`account-trigger ${isAccountMenuOpen ? 'is-open' : ''}`}
+                    onClick={() => setIsAccountMenuOpen((current) => !current)}
+                    aria-label={ui.openAccount}
+                    aria-expanded={isAccountMenuOpen}
+                  >
+                    <span>{accountAvatarInitials}</span>
+                  </button>
+
+                  {isAccountMenuOpen ? (
+                    <div className="account-menu-panel" role="menu" aria-label={ui.accountSettings}>
+                      <div className="account-menu-header">
+                        <div className="account-menu-avatar">
+                          <span>{accountAvatarInitials}</span>
+                        </div>
+                        <div>
+                          <p className="account-menu-label">{accountModeLabel}</p>
+                          <p className="account-menu-title">{accountPanelTitle}</p>
+                          <p className="account-menu-copy">{accountPanelCopy}</p>
+                        </div>
+                      </div>
+
+                      <div className="account-menu-section">
+                        <label className="account-menu-field">
+                          <span className="top-toolbar-group-label">{ui.gridlines}</span>
+                          <select
+                            className="theme-select"
+                            value={gridlineMode}
+                            onChange={(event) => setGridlineMode(event.target.value as GridlineMode)}
+                            aria-label={ui.gridlines}
+                          >
+                            <option value="default">{getGridlineOptionLabel('default', ui, textForm)}</option>
+                            <option value="crazy-minimalist">{getGridlineOptionLabel('crazy-minimalist', ui, textForm)}</option>
+                          </select>
+                          <span className="account-menu-copy">{ui.gridlinesNote}</span>
+                        </label>
+                      </div>
+
+                      <div className="account-menu-section">
+                        <label className="account-menu-field">
+                          <span className="top-toolbar-group-label">{ui.theme}</span>
+                          <select className="theme-select" value={theme} onChange={(event) => setTheme(event.target.value as ThemeName)} aria-label={ui.theme}>
+                            <option value="auto">{ui.themeAuto}</option>
+                            <option value="white">{ui.themeWhite}</option>
+                            <option value="paper">{ui.themePaper}</option>
+                            <option value="night">{ui.themeNight}</option>
+                            <option value="sepia">{ui.themeSepia}</option>
+                            <option value="blueprint">{ui.themeBlueprint}</option>
+                          </select>
+                          <span className="account-menu-copy">{ui.themeNote}</span>
+                        </label>
+                      </div>
+
+                      <div className="account-menu-section">
+                        <label className="account-menu-field">
+                          <span className="top-toolbar-group-label">{ui.language}</span>
+                          <select className="theme-select" value={language} onChange={(event) => setLanguage(event.target.value as LanguageCode)} aria-label={ui.language}>
+                            <option value="en">{ui.languageEnglish}</option>
+                            <option value="coming-soon" disabled>
+                              {ui.languageComingSoon}
+                            </option>
+                          </select>
+                          <span className="account-menu-copy">{ui.languageNote}</span>
+                        </label>
+                      </div>
+
+                      <div className="account-menu-section">
+                        <label className="account-menu-field">
+                          <span className="top-toolbar-group-label">{ui.textForm}</span>
+                          <select className="theme-select" value={textForm} onChange={(event) => setTextForm(event.target.value as TextForm)} aria-label={ui.textForm}>
+                            <option value="formal">{ui.textFormFormal}</option>
+                            <option value="informal">{ui.textFormInformal}</option>
+                          </select>
+                          <span className="account-menu-copy">{ui.textFormNote}</span>
+                        </label>
+                      </div>
+
+                      {isSupabaseConfigured && user ? (
+                        <div className="account-menu-section">
+                          <button
+                            type="button"
+                            className="nav-button account-menu-action"
+                            onClick={() => {
+                              void signOut();
+                              setIsMobileHeaderMenuOpen(false);
+                            }}
+                          >
+                            {ui.signOut}
+                          </button>
+                        </div>
+                      ) : isSupabaseConfigured ? (
+                        <div className="account-menu-section">
+                          <div className="account-menu-demo-actions">
+                            <button
+                              type="button"
+                              className="nav-button account-menu-action demo-signup-button"
+                              onClick={() => {
+                                setIsAccountMenuOpen(false);
+                                setIsMobileHeaderMenuOpen(false);
+                                setShowInviteOnlyAuth(true);
+                              }}
+                            >
+                              {ui.signUp}
+                            </button>
+                            <button
+                              type="button"
+                              className="nav-button account-menu-action demo-signin-button"
+                              onClick={() => {
+                                setIsAccountMenuOpen(false);
+                                setIsMobileHeaderMenuOpen(false);
+                                setShowInviteOnlyAuth(true);
+                              }}
+                            >
+                              {ui.signIn}
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {user ? (
+                        <div className="account-menu-placeholder-stack" aria-hidden="true">
+                          <div className="account-menu-placeholder" />
+                          <div className="account-menu-placeholder account-menu-placeholder-short" />
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
           </div>
 
           <div className="top-toolbar-middle">
-            {isSupabaseConfigured && !user ? <p className="top-toolbar-demo-badge">{ui.demoModeBanner}</p> : null}
             <form
               className="misc-inbox-form misc-inbox-form-top"
               onSubmit={(event) => {
@@ -2674,160 +3661,14 @@ function App() {
               </div>
             </form>
           </div>
-
-          <div className="top-toolbar-summary">
-            {isSupabaseConfigured && user && saveState !== 'idle' ? (
-              <span className={`save-indicator save-indicator-${saveState}`}>
-                {saveState === 'saving' ? ui.savingStatus : ui.savedStatus}
-              </span>
-            ) : null}
-
-            {isSupabaseConfigured && !user ? (
-              <button type="button" className="nav-button nav-button-primary demo-signup-button" onClick={() => setShowInviteOnlyAuth(true)}>
-                {ui.signUp}
-              </button>
-            ) : null}
-
-            <div>
-              <div className="planner-view-menu-shell" ref={plannerViewMenuRef}>
-                <button
-                  type="button"
-                  className="planner-view-trigger"
-                  onClick={() => setIsPlannerViewMenuOpen((current) => !current)}
-                  aria-label={ui.plannerSettings}
-                  aria-expanded={isPlannerViewMenuOpen}
-                >
-                  {plannerView === 'yearly' ? ui.yearlyPlanner : plannerView === 'monthly' ? ui.monthlyPlanner : ui.weeklyPlanner}
-                </button>
-
-                {isPlannerViewMenuOpen ? (
-                  <div className="planner-view-menu" role="menu" aria-label={ui.plannerSettings}>
-                    {(['weekly', 'monthly', 'yearly'] as PlannerView[]).map((view) => (
-                      <button
-                        key={view}
-                        type="button"
-                        className={`priority-menu-item planner-view-menu-item ${plannerView === view ? 'is-active' : ''}`}
-                        onClick={() => {
-                          setPlannerView(view);
-                          setIsPlannerViewMenuOpen(false);
-                        }}
-                      >
-                        {view === 'yearly' ? ui.yearlyPlanner : view === 'monthly' ? ui.monthlyPlanner : ui.weeklyPlanner}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="account-menu-shell" ref={accountMenuRef}>
-              <button
-                type="button"
-                className={`account-trigger ${isAccountMenuOpen ? 'is-open' : ''}`}
-                onClick={() => setIsAccountMenuOpen((current) => !current)}
-                aria-label={ui.openAccount}
-                aria-expanded={isAccountMenuOpen}
-              >
-                <span>{accountAvatarInitials}</span>
-              </button>
-
-              {isAccountMenuOpen ? (
-                <div className="account-menu-panel" role="menu" aria-label={ui.accountSettings}>
-                  <div className="account-menu-header">
-                    <div className="account-menu-avatar">
-                      <span>{accountAvatarInitials}</span>
-                    </div>
-                    <div>
-                      <p className="account-menu-label">{accountModeLabel}</p>
-                      <p className="account-menu-title">{accountPanelTitle}</p>
-                      <p className="account-menu-copy">{accountPanelCopy}</p>
-                    </div>
-                  </div>
-
-                  <div className="account-menu-section">
-                    <label className="account-menu-field">
-                      <span className="top-toolbar-group-label">{ui.gridlines}</span>
-                      <select
-                        className="theme-select"
-                        value={gridlineMode}
-                        onChange={(event) => setGridlineMode(event.target.value as GridlineMode)}
-                        aria-label={ui.gridlines}
-                      >
-                        <option value="default">{getGridlineOptionLabel('default', ui, textForm)}</option>
-                        <option value="crazy-minimalist">{getGridlineOptionLabel('crazy-minimalist', ui, textForm)}</option>
-                      </select>
-                      <span className="account-menu-copy">{ui.gridlinesNote}</span>
-                    </label>
-                  </div>
-
-                  <div className="account-menu-section">
-                    <label className="account-menu-field">
-                      <span className="top-toolbar-group-label">{ui.theme}</span>
-                      <select className="theme-select" value={theme} onChange={(event) => setTheme(event.target.value as ThemeName)} aria-label={ui.theme}>
-                        <option value="white">{ui.themeWhite}</option>
-                        <option value="paper">{ui.themePaper}</option>
-                        <option value="night">{ui.themeNight}</option>
-                        <option value="sepia">{ui.themeSepia}</option>
-                        <option value="blueprint">{ui.themeBlueprint}</option>
-                      </select>
-                    </label>
-                  </div>
-
-                  <div className="account-menu-section">
-                    <label className="account-menu-field">
-                      <span className="top-toolbar-group-label">{ui.language}</span>
-                      <select className="theme-select" value={language} onChange={(event) => setLanguage(event.target.value as LanguageCode)} aria-label={ui.language}>
-                        <option value="en">{ui.languageEnglish}</option>
-                        <option value="coming-soon" disabled>
-                          {ui.languageComingSoon}
-                        </option>
-                      </select>
-                      <span className="account-menu-copy">{ui.languageNote}</span>
-                    </label>
-                  </div>
-
-                  <div className="account-menu-section">
-                    <label className="account-menu-field">
-                      <span className="top-toolbar-group-label">{ui.textForm}</span>
-                      <select className="theme-select" value={textForm} onChange={(event) => setTextForm(event.target.value as TextForm)} aria-label={ui.textForm}>
-                        <option value="formal">{ui.textFormFormal}</option>
-                        <option value="informal">{ui.textFormInformal}</option>
-                      </select>
-                      <span className="account-menu-copy">{ui.textFormNote}</span>
-                    </label>
-                  </div>
-
-                  {isSupabaseConfigured && user ? (
-                    <div className="account-menu-section">
-                      <button type="button" className="nav-button account-menu-action" onClick={signOut}>
-                        {ui.signOut}
-                      </button>
-                    </div>
-                  ) : isSupabaseConfigured ? (
-                    <div className="account-menu-section">
-                      <button
-                        type="button"
-                        className="nav-button nav-button-primary account-menu-action"
-                        onClick={() => {
-                          setIsAccountMenuOpen(false);
-                          setShowInviteOnlyAuth(true);
-                        }}
-                      >
-                        {ui.signUp}
-                      </button>
-                    </div>
-                  ) : null}
-
-                  <div className="account-menu-placeholder-stack" aria-hidden="true">
-                    <div className="account-menu-placeholder" />
-                    <div className="account-menu-placeholder account-menu-placeholder-short" />
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </div>
         </div>
       </header>
+
+      {isSupabaseConfigured && !user ? (
+        <div className="demo-mode-strip">
+          <p className="top-toolbar-demo-badge">{ui.demoModeBanner}</p>
+        </div>
+      ) : null}
 
       {plannerView === 'yearly' ? (
         <main className="calendar-planner-stage">
@@ -3069,8 +3910,10 @@ function App() {
           onOpenPriority={() =>
             openPriorityPicker(activeNotesEditor.dayKey, {
               id: activeNotesEditor.rowId,
+              taskId: null,
               title: activeNotesEditor.taskTitle,
               notes: activeNotesEditor.notes,
+              ongoingProjectId: activeNotesEditor.ongoingProjectId,
               status: activeNotesEditor.status,
               time: activeNotesEditor.time,
               detailColor: activeNotesEditor.detailColor,
@@ -3080,14 +3923,17 @@ function App() {
           onOpenTime={() =>
             openTimeEditor(activeNotesEditor.dayKey, {
               id: activeNotesEditor.rowId,
+              taskId: null,
               title: activeNotesEditor.taskTitle,
               notes: activeNotesEditor.notes,
+              ongoingProjectId: activeNotesEditor.ongoingProjectId,
               status: activeNotesEditor.status,
               time: activeNotesEditor.time,
               detailColor: activeNotesEditor.detailColor,
               priorityDismissed: activeNotesEditor.priorityDismissed,
             })
           }
+          onToggleOngoing={toggleOngoingFromNotes}
           isSubdialogOpen={Boolean(activePriorityPicker || activeStatusEditor || activeTimeEditor)}
         />
       ) : null}
@@ -3513,7 +4359,7 @@ function DaySection({
                   }
                 }}
               >
-                {row.notes.trim() ? ui.notes : `+ ${ui.notes}`}
+                {ui.notes}
               </button>
             </div>
             <button
@@ -3551,6 +4397,7 @@ type NotesDialogProps = {
   onChangeNotes: (notes: string) => void;
   onOpenPriority: () => void;
   onOpenTime: () => void;
+  onToggleOngoing: () => void;
   isSubdialogOpen: boolean;
 };
 
@@ -3589,6 +4436,13 @@ type SearchDropdownProps = {
   onClose: () => void;
   onChangeQuery: (value: string) => void;
   onPickResult: (result: SearchResult) => void;
+};
+
+type OngoingProjectsDropdownProps = {
+  ui: UiText;
+  projects: OngoingProject[];
+  targets: Map<string, OngoingProjectTarget>;
+  onPickProject: (projectId: string) => void;
 };
 
 type YearlyPlannerProps = {
@@ -3984,7 +4838,62 @@ function SearchDropdown({ ui, query, results, onClose, onChangeQuery, onPickResu
   );
 }
 
-function NotesDialog({ activeNotesEditor, ui, onClose, onChangeTaskTitle, onChangeNotes, onOpenPriority, onOpenTime, isSubdialogOpen }: NotesDialogProps) {
+function OngoingProjectsDropdown({ ui, projects, targets, onPickProject }: OngoingProjectsDropdownProps) {
+  useEffect(() => {
+    function handleKeydown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        const activeElement = document.activeElement as HTMLElement | null;
+        activeElement?.blur();
+      }
+    }
+
+    document.addEventListener('keydown', handleKeydown);
+    return () => document.removeEventListener('keydown', handleKeydown);
+  }, []);
+
+  return (
+    <div className="ongoing-projects-dropdown" role="dialog" aria-label={ui.ongoingProjectsTitle}>
+      <div className="ongoing-projects-header">
+        <p className="dialog-label">{ui.ongoingProjectsTitle}</p>
+        <p className="account-menu-copy">{ui.ongoingProjectsCopy}</p>
+      </div>
+
+      <div className="ongoing-projects-list">
+        {projects.length > 0 ? (
+          projects.map((project) => (
+            <button
+              key={project.id}
+              type="button"
+              className="ongoing-project-card ongoing-project-link"
+              onClick={() => onPickProject(project.id)}
+              disabled={!targets.has(project.id)}
+            >
+              <div className="ongoing-project-card-header">
+                <span className="ongoing-project-title-text">{project.title || ui.ongoingProjectTitlePlaceholder}</span>
+              </div>
+              <p className="ongoing-project-notes-text">{project.notes || ui.ongoingProjectNotesPlaceholder}</p>
+            </button>
+          ))
+        ) : (
+          <div className="ongoing-projects-empty">{ui.ongoingProjectsEmpty}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function NotesDialog({
+  activeNotesEditor,
+  ui,
+  onClose,
+  onChangeTaskTitle,
+  onChangeNotes,
+  onOpenPriority,
+  onOpenTime,
+  onToggleOngoing,
+  isSubdialogOpen,
+}: NotesDialogProps) {
   const dialogRef = useRef<HTMLElement | null>(null);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const [activeFormats, setActiveFormats] = useState({
@@ -4185,6 +5094,7 @@ function NotesDialog({ activeNotesEditor, ui, onClose, onChangeTaskTitle, onChan
       ? 'status-none'
       : 'is-empty-priority';
   const timeButtonLabel = activeNotesEditor.time || ui.timeSet;
+  const ongoingButtonClass = activeNotesEditor.ongoingProjectId ? 'is-active' : '';
 
   return (
     <div className="dialog-backdrop" role="presentation">
@@ -4230,6 +5140,13 @@ function NotesDialog({ activeNotesEditor, ui, onClose, onChangeTaskTitle, onChan
             aria-label={`${ui.time}: ${timeButtonLabel}`}
           >
             {timeButtonLabel}
+          </button>
+          <button
+            type="button"
+            className={`priority-trigger notes-ongoing-trigger ${ongoingButtonClass}`}
+            onClick={onToggleOngoing}
+          >
+            {ui.ongoingSet}
           </button>
         </div>
 
