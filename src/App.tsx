@@ -1695,7 +1695,7 @@ function App() {
   const [language, setLanguage] = useState<LanguageCode>(() => 'en');
   const [textForm, setTextForm] = useState<TextForm>(() => {
     const savedTextForm = window.localStorage.getItem(TEXT_FORM_STORAGE_KEY);
-    return savedTextForm === 'formal' ? 'formal' : 'informal';
+    return savedTextForm === 'informal' ? 'informal' : 'formal';
   });
   const [gridlineMode, setGridlineMode] = useState<GridlineMode>(() => {
     const savedGridlineMode = window.localStorage.getItem(GRIDLINE_MODE_STORAGE_KEY);
@@ -1715,7 +1715,7 @@ function App() {
       return savedTheme;
     }
 
-    return 'white';
+    return 'auto';
   });
   const [themeClock, setThemeClock] = useState(() => Date.now());
   const [user, setUser] = useState<User | null>(null);
