@@ -1,100 +1,123 @@
 # Dnevnik Todo Calendar
 
-Minimalist weekly planner built with React, TypeScript, and Vite.
+Live app: [https://dnevnik-todo-calendar.vercel.app/](https://dnevnik-todo-calendar.vercel.app/)
 
-The app is inspired by a Soviet and post-Soviet `dnevnik`: a structured paper planner with a calm weekly spread instead of a dense dashboard. It combines task planning, notes, lightweight priority management, and optional cloud sync in a compact two-page layout.
+Minimalist planner built with React, TypeScript, Vite, and Supabase.
+
+The app is inspired by a Soviet and post-Soviet `dnevnik`: a structured paper planner with a calm weekly spread instead of a dense dashboard. It keeps the interface notebook-like and low-noise, while adding search, notes, sync, themes, localization, and a public demo flow.
 
 ## Overview
 
-Instead of a standard month grid, the planner uses a weekly spread:
+The planner currently supports three views:
+
+- `weekly planner`
+- `monthly planner`
+- `yearly planner`
+
+The main weekly layout is a two-page spread:
 
 - left page: Monday, Tuesday, Wednesday
 - right page: Thursday, Friday, Saturday
 
-The interface is intentionally restrained, paper-like, and low-noise, with optional themes and a matching rounded UI system across the planner, dialogs, settings, and calendar.
+Instead of feeling like a generic task app, the product is intentionally shaped like a paper planning surface: floating day blocks, restrained controls, and customizable typography/gridline styles.
+
+## Live Product Behavior
+
+- public Vercel landing page opens in `demo mode`
+- demo mode is explorable without an account
+- synced access is behind an invite-only Google beta flow
+- `sign up` opens the beta access screen
+- signed-in users sync planner data through Supabase
 
 ## Features
 
-- weekly two-page planner layout
-- Monday through Saturday spread
-- current day highlight
-- editable planner title
-- global search across task titles and note previews
-- year calendar view with GitHub-style green activity shading
-- page-turn-inspired week transition
-- large side hit-zones to move between weeks
-- `Home` jump back to the current week
+### Planner
 
-### Tasks
+- weekly, monthly, and yearly planner modes
+- `home` jumps back to the current week in weekly view
+- current day highlighting
+- page-turn-style week navigation
+- large side hit-zones for previous/next week
+- half-week month/date headers
+- one project row by default per day
+- the single default row uses the height of the old six-row block
+- days grow taller once project count exceeds the initial visual capacity
+- project rows can be reordered or moved across days with drag and drop
 
-- inline task editing
-- each day starts with 6 rows
-- can expand up to 16 rows per day
-- hover controls on the last row to add or delete rows
-- drag and drop tasks within a day
-- drag and drop tasks between days
+### Projects and Notes
 
-### Priority
-
-- dedicated `Priority` column
-- popup priority picker instead of browser-native dropdowns
-- built-in options: `Low`, `Urgent`, `Critical`, `Done`, and `None`
-- custom priority/detail values with color selection
-- `Set Priority` prompt for new tasks
-- empty priority cells after explicitly choosing `None`, with hover-to-reveal prompt
-
-### Notes
-
-- notes open in a popup editor
-- notes dialog uses the same rounded visual system as the rest of the app
-- editable task title inside the notes dialog
+- `project` column instead of `task`
+- inline project editing
+- `Enter` from a project cell opens notes
+- notes popup with matching rounded app styling
+- editable project title inside the notes window
 - rich text controls:
   - bold
   - italic
   - body
   - large
   - bullet list
-- resizable notes window
-- closes with `Done`, `Esc`, `Cmd/Ctrl+Enter`, or the close button
-- outside click does not close dialogs
+- `Tab` indentation inside notes
+- notes can be applied with `Cmd/Ctrl+Enter`
+- priority is managed from the notes UI instead of a dedicated table column
+- separate deadline time control inside notes
 
-### Miscellaneous Task Inbox
+### Unassigned Tasks
 
-- footer inbox for miscellaneous tasks you do not want to place immediately
-- add misc tasks by typing and pressing `Enter`
-- misc tasks persist by week
-- drag misc tasks into planner rows later
-- delete misc tasks on hover
+- centered `what's on your mind?` capture input in the header
+- typing reveals the inline cue `drag later with Enter`
+- unassigned task chips stay at the bottom lane
+- unassigned tasks can be dragged into planner rows later
+
+### Search
+
+- header `search` button with dropdown search panel
+- keyboard shortcut: `Cmd/Ctrl+F`
+- searches project titles and note content/previews
 
 ### Personalization
 
-- multiple themes:
+- themes:
   - White
   - Paper
   - Night
   - Sepia
   - Blueprint
-- interface language switcher:
+- interface languages:
   - English
   - Russian
-- language setting translates the interface only, not task content or notes
-- account/settings menu in the header
+- `text form` customization:
+  - formal
+  - informal
+- informal mode lowercases interface copy and date labels
+- `gridlines` customization:
+  - formal labels: `Gridlines`, `No gridlines`
+  - informal labels: `ugly gridlines`, `big4 trauma`
+- account/settings menu for theme, language, text form, and gridline style
+
+### Visual System
+
+- floating month and day blocks
+- configurable notebook/gridline feel
+- `big4 trauma` mode replaces hard gridlines with soft grey band separation
+- header and footer chrome stretched edge-to-edge with planner-aligned content
 
 ### Storage and Sync
 
-- local browser persistence by default
-- Supabase cloud sync when configured
-- email/password authentication
-- Google and GitHub OAuth buttons in the auth UI
-- local fallback behavior when Supabase is not configured or unavailable
+- local browser persistence
+- Supabase cloud sync for signed-in users
+- Google OAuth beta sign-in
+- invite-only gating with `VITE_ALLOWED_EMAILS`
+- visible `Saving... / Saved` sync feedback
 
 ## Tech Stack
 
 - React
 - TypeScript
 - Vite
-- CSS
+- custom CSS
 - Supabase
+- Vercel
 
 ## Local Development
 
@@ -110,34 +133,37 @@ Start the dev server:
 npm run dev
 ```
 
-Open the local URL printed by Vite, usually [http://localhost:5173](http://localhost:5173).
+Open the local URL printed by Vite.
 
-## Supabase Setup
-
-The app supports two storage modes:
-
-- local browser storage by default
-- Supabase cloud sync when environment variables are configured
+## Environment Variables
 
 Create a `.env.local` file:
 
 ```env
 VITE_SUPABASE_URL=your_project_url
 VITE_SUPABASE_PUBLISHABLE_KEY=your_publishable_key
+VITE_ALLOWED_EMAILS=you@example.com,friend@example.com
 ```
-
-Then:
-
-1. Create a Supabase project.
-2. Run the SQL in `supabase-schema.sql`.
-3. Restart the dev server.
-4. Sign in through the app.
 
 Notes:
 
-- Google and GitHub OAuth buttons are already in the UI, but they only work after those providers are configured in Supabase.
-- If a Supabase free-tier project has been inactive for a while, it may be paused and need time to wake up.
-- The app includes local fallback behavior, so you can still use it without a working Supabase connection.
+- `VITE_ALLOWED_EMAILS` is optional for local demo work, but required if you want to mirror invite-only beta behavior locally.
+- after changing env vars, restart the Vite dev server
+
+## Supabase Setup
+
+The app supports:
+
+- local browser demo/persistence behavior
+- Supabase sync for authenticated users
+
+To connect Supabase:
+
+1. Create a Supabase project.
+2. Run the SQL in `supabase-schema.sql`.
+3. Add the required env vars.
+4. Restart the dev server.
+5. Configure Google auth in Supabase if you want beta sign-in.
 
 ## Build
 
@@ -153,23 +179,29 @@ Preview the production build locally:
 npm run preview
 ```
 
+## Deployment
+
+The app is deployed on Vercel:
+
+- live app: [https://dnevnik-todo-calendar.vercel.app/](https://dnevnik-todo-calendar.vercel.app/)
+
+For deploys, Vercel needs:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`
+- `VITE_ALLOWED_EMAILS` for invite-only beta gating
+
 ## Project Structure
 
-- `src/App.tsx` - main application state, planner logic, dialogs, auth flow, search, calendar, drag and drop, and settings
-- `src/styles.css` - planner layout, themes, dialogs, calendar styling, and overall visual system
+- `src/App.tsx` - planner state, auth/demo flow, dialogs, search, planner modes, sync logic, and settings
+- `src/styles.css` - layout, themes, planner surfaces, dialogs, header/footer chrome, and customization styles
 - `src/lib/supabase.ts` - Supabase client setup
 - `supabase-schema.sql` - database schema and RLS policies
-- `docs/ARCHITECTURE.md` - implementation notes, state flow, persistence model, and refactor guidance
+- `docs/ARCHITECTURE.md` - implementation notes, persistence flow, and architecture guidance
 
 ## Product Direction
 
-The app is intentionally not a full productivity suite. It focuses on:
-
-- a readable weekly planning surface
-- quick task capture and movement
-- lightweight prioritization
-- calm notes editing
-- low-friction local use with optional cloud sync
+Dnevnik Todo Calendar is still intentionally focused and calm, but it is being shaped as a foundation for a larger planning system over time. The current product centers on personal planning, notes, visual rhythm, and lightweight sync, while leaving room for future collaboration, assignments, reminders, and richer planning analytics.
 
 ## License
 
