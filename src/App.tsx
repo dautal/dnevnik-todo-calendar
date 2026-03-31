@@ -2377,6 +2377,8 @@ function App() {
                   />
                 ) : null}
               </div>
+
+              {isSupabaseConfigured && !user ? <p className="top-toolbar-demo-badge">{ui.demoModeBanner}</p> : null}
             </div>
           </div>
 
@@ -2416,7 +2418,6 @@ function App() {
             ) : null}
 
             <div>
-              {isSupabaseConfigured && !user ? <p className="top-toolbar-demo-badge">{ui.demoModeBanner}</p> : null}
               <div className="planner-view-menu-shell" ref={plannerViewMenuRef}>
                 <button
                   type="button"
