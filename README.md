@@ -205,4 +205,9 @@ Nev is still intentionally focused and calm, but it is being shaped as a foundat
 
 ## License
 
-No license has been added yet.
+This project is licensed under the MIT License. See [LICENSE](./LICENSE).
+
+## Policies
+
+- [Privacy Policy](./PRIVACY.md)
+- [Terms of Service](./TERMS.md)

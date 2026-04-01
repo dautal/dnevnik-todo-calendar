@@ -2945,9 +2945,14 @@ h1 {
 .notes-preview {
   display: block;
   overflow: hidden;
+<<<<<<< ours
   white-space: pre-line;
   line-height: 1.25;
   max-height: calc(1.25em * 3);
+=======
+  white-space: nowrap;
+  text-overflow: ellipsis;
+>>>>>>> theirs
 }
 
 .day-grid.is-low-density .notes-preview {
