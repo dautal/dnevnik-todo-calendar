@@ -194,6 +194,7 @@ const MONTH_NAMES = [
   'November',
   'December',
 ];
+const TEMP_BETA_BUILD = import.meta.env.VITE_BETA_BUILD ?? 'beta-apr01-2';
 
 const UI_TEXT = {
   en: {
@@ -1414,12 +1415,17 @@ function getNotePreview(notes: string) {
 
   return notes
     .replace(/&nbsp;/g, ' ')
-    .replace(/<li>/g, '• ')
-    .replace(/<\/li>/g, ' ')
-    .replace(/<br\s*\/?>/g, ' ')
-    .replace(/<\/(p|div|h1|h2|h3|ul|ol)>/g, ' ')
+    .replace(/<(p|div|h1|h2|h3|ul|ol)[^>]*>/g, '\n')
+    .replace(/<li[^>]*>/g, '\n• ')
+    .replace(/<\/li>/g, '\n')
+    .replace(/<br\s*\/?>/g, '\n')
+    .replace(/<\/(p|div|h1|h2|h3|ul|ol)>/g, '\n')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(/\r/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
     .trim();
 }
 
@@ -3570,6 +3576,10 @@ function updateActiveTaskTitle(title: string) {
               </div>
 
               <div className="top-toolbar-summary">
+                <span className="beta-build-indicator" title="Temporary beta build indicator">
+                  {TEMP_BETA_BUILD}
+                </span>
+
                 {isSupabaseConfigured && user && (showWeekLoadingBanner || saveState !== 'idle') ? (
                   <span
                     className={`save-indicator ${

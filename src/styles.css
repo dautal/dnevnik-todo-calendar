@@ -1118,6 +1118,22 @@ h1 {
   white-space: nowrap;
 }
 
+.beta-build-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line-subtle);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 .save-indicator-saving {
   border-color: var(--button-outline);
   color: var(--ink);
@@ -2929,12 +2945,13 @@ h1 {
 .notes-preview {
   display: block;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  white-space: pre-line;
+  line-height: 1.25;
+  max-height: calc(1.25em * 3);
 }
 
 .day-grid.is-low-density .notes-preview {
-  white-space: normal;
+  white-space: pre-line;
   text-overflow: clip;
   overflow: visible;
 }
