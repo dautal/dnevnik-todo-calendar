@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 
@@ -37,6 +37,7 @@ type DraggedTaskRow = {
 type ActiveNotesEditor = {
   dayKey: string;
   rowId: string;
+  createdAt: string | null;
   taskTitle: string;
   notes: string;
   ongoingProjectId: string | null;
@@ -122,6 +123,7 @@ type PlannerTask = {
   time: string;
   detailColor: DetailColor;
   priorityDismissed: boolean;
+  createdAt: string;
   updatedAt: string;
 };
 
@@ -212,6 +214,9 @@ const UI_TEXT = {
     pastWeekEditHint: "You can't edit past weeks. If you want to edit, drag project to Today.",
     calendar: 'Calendar',
     search: 'Search',
+    unassigned: 'Unassigned',
+    unassignedTitle: 'Unassigned tasks',
+    unassignedCopy: 'Whatever you type here stays unassigned until you place it.',
     ongoingProjects: 'Ongoing',
     ongoingProjectsTitle: 'Ongoing projects',
     ongoingProjectsCopy: 'Pinned long-term projects and details live here.',
@@ -220,6 +225,8 @@ const UI_TEXT = {
     ongoingProjectTitlePlaceholder: 'Project title',
     ongoingProjectNotesPlaceholder: 'Details',
     deleteOngoingProject: 'Delete ongoing project',
+    scheduledFor: 'Scheduled for',
+    createdOn: 'Created on',
     searchShortcutHint: 'Open with Cmd/Ctrl+F',
     searchPlaceholder: 'Search tasks and details',
     noMatchingTasks: 'No matching tasks',
@@ -294,6 +301,7 @@ const UI_TEXT = {
     statusDone: 'Done',
     priorityApply: 'Apply',
     applyShortcutHint: 'Apply with Cmd/Ctrl+Enter',
+    chooseWithArrowKeysHint: 'Choose with arrow keys',
     time: 'Time',
     timeSet: 'Set deadline time',
     timeFormatLabel: 'Format',
@@ -328,12 +336,14 @@ const UI_TEXT = {
     untitledTask: 'Untitled task',
     body: 'Body',
     large: 'Large',
+    title: 'Title',
     previousYear: 'Previous year',
     nextYear: 'Next year',
     close: 'Close',
     miscTasksTitle: 'Miscellaneous tasks',
     miscTasksPlaceholder: "What's on your mind?",
-    miscTasksTypedHint: 'drag later with Enter',
+    miscTasksTypedHint: 'appears in unassigned',
+    miscTasksSubmitHint: 'save with Enter',
     miscTasksSend: 'Add task',
     miscTasksEmpty: "Whatever's on your mind will appear here, you can assign it whenever.",
     miscTasksLimitReached: 'assign first',
@@ -357,6 +367,9 @@ const UI_TEXT = {
     pastWeekEditHint: 'Прошлые недели нельзя редактировать. Чтобы изменить проект, перетащите его в Сегодня.',
     calendar: 'Календарь',
     search: 'Поиск',
+    unassigned: 'Нераспределенные',
+    unassignedTitle: 'Нераспределенные задачи',
+    unassignedCopy: 'Все, что вы вводите здесь, останется нераспределенным, пока вы это не назначите.',
     ongoingProjects: 'Постоянные',
     ongoingProjectsTitle: 'Постоянные проекты',
     ongoingProjectsCopy: 'Здесь живут закрепленные долгосрочные проекты и детали.',
@@ -365,6 +378,8 @@ const UI_TEXT = {
     ongoingProjectTitlePlaceholder: 'Название проекта',
     ongoingProjectNotesPlaceholder: 'Детали',
     deleteOngoingProject: 'Удалить постоянный проект',
+    scheduledFor: 'Запланировано на',
+    createdOn: 'Создано',
     searchShortcutHint: 'Открыть через Cmd/Ctrl+F',
     searchPlaceholder: 'Поиск по задачам и деталям',
     noMatchingTasks: 'Ничего не найдено',
@@ -439,6 +454,7 @@ const UI_TEXT = {
     statusDone: 'Сделано',
     priorityApply: 'Применить',
     applyShortcutHint: 'Применить: Cmd/Ctrl+Enter',
+    chooseWithArrowKeysHint: 'Выбор стрелками',
     time: 'Время',
     timeSet: 'Указать дедлайн',
     timeFormatLabel: 'Формат',
@@ -473,12 +489,14 @@ const UI_TEXT = {
     untitledTask: 'Без названия',
     body: 'Обычный',
     large: 'Крупный',
+    title: 'Заголовок',
     previousYear: 'Предыдущий год',
     nextYear: 'Следующий год',
     close: 'Закрыть',
     miscTasksTitle: 'Разные задачи',
     miscTasksPlaceholder: 'Что у вас на уме?',
-    miscTasksTypedHint: 'перетащите позже через Enter',
+    miscTasksTypedHint: 'появится в нераспределенных',
+    miscTasksSubmitHint: 'сохранить через Enter',
     miscTasksSend: 'Добавить задачу',
     miscTasksEmpty: 'Все, что у вас на уме, будет появляться здесь, и вы сможете назначить это позже.',
     miscTasksLimitReached: 'сначала назначьте',
@@ -498,7 +516,7 @@ const CALENDAR_WEEKDAY_LABELS = {
 
 // Notes are edited as HTML via `contentEditable`, so we explicitly whitelist the small
 // formatting subset the app supports before saving or rendering anything back to the DOM.
-const ALLOWED_NOTE_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'UL', 'OL', 'LI', 'P', 'DIV', 'BR', 'H3']);
+const ALLOWED_NOTE_TAGS = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'UL', 'OL', 'LI', 'P', 'DIV', 'BR', 'H2', 'H3', 'PRE']);
 
 type UiText = (typeof UI_TEXT)[LanguageCode];
 
@@ -515,6 +533,43 @@ function createEmptyPlannerState(): PlannerState {
 
 function getDateLocale(language: LanguageCode) {
   return language === 'ru' ? 'ru-RU' : 'en-US';
+}
+
+function getPlannerDayDate(dayKey: string) {
+  const dateKey = dayKey.split('-').slice(1).join('-');
+  return new Date(`${dateKey}T12:00:00`);
+}
+
+function formatPlannerDayLabel(dayKey: string, language: LanguageCode, textForm: TextForm) {
+  const date = getPlannerDayDate(dayKey);
+  return applyTextFormToString(
+    date.toLocaleDateString(getDateLocale(language), {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+    }),
+    textForm,
+  );
+}
+
+function getPlannerDayCreatedAt(dayKey: string) {
+  return getPlannerDayDate(dayKey).toISOString();
+}
+
+function formatPlannerDateLabel(value: string, language: LanguageCode, textForm: TextForm) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return applyTextFormToString(
+    date.toLocaleDateString(getDateLocale(language), {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+    }),
+    textForm,
+  );
 }
 
 function resolveThemeByLocalTime(date: Date): Exclude<ThemeName, 'auto'> {
@@ -596,6 +651,10 @@ function getPriorityVisualClass(row: TaskRow) {
 
   if (row.status !== 'none') {
     return `priority-status-${row.status}`;
+  }
+
+  if (row.ongoingProjectId) {
+    return 'priority-ongoing';
   }
 
   return '';
@@ -719,18 +778,19 @@ function formatTimeInputDraft(rawValue: string, format: TimeInputFormat) {
   if (colonIndex >= 0) {
     const rawHours = rawTime.slice(0, colonIndex).replace(/\D/g, '').slice(0, 2);
     const rawMinutes = rawTime.slice(colonIndex + 1).replace(/\D/g, '').slice(0, 2);
-    timePart = rawMinutes ? `${rawHours}:${rawMinutes}` : `${rawHours}:`;
+    const paddedHours = rawHours.length === 1 ? `0${rawHours}` : rawHours;
+    timePart = rawMinutes ? `${paddedHours}:${rawMinutes}` : rawHours ? `${paddedHours}:` : '';
   } else {
     const digits = rawTime.replace(/\D/g, '').slice(0, 4);
 
-    if (digits.length <= 2) {
+    if (digits.length === 0) {
+      timePart = '';
+    } else if (digits.length === 1) {
+      timePart = `0${digits}`;
+    } else if (digits.length === 2) {
       timePart = digits;
-    } else if (digits.length === 3) {
-      timePart = `${digits.slice(0, 1)}:${digits.slice(1)}`;
     } else {
-      const firstTwoDigits = Number.parseInt(digits.slice(0, 2), 10);
-      const hourLength = digits[0] === '0' || (firstTwoDigits >= 10 && firstTwoDigits <= 12) ? 2 : 1;
-      timePart = `${digits.slice(0, hourLength)}:${digits.slice(hourLength)}`;
+      timePart = `${digits.slice(0, 2)}:${digits.slice(2)}`;
     }
   }
 
@@ -751,6 +811,7 @@ function sanitizeNoteHtml(html: string) {
 
   function sanitizeNode(node: Node) {
     if (node.nodeType === Node.TEXT_NODE) {
+      node.textContent = node.textContent?.replace(/&nbsp;/g, ' ') ?? '';
       return;
     }
 
@@ -927,7 +988,7 @@ function normalizeSavedWeeks(raw: Record<string, Record<string, Array<Partial<Ta
   return normalized;
 }
 
-function createPlannerTaskFromRow(row: TaskRow, fallbackId: string): PlannerTask {
+function createPlannerTaskFromRow(row: TaskRow, fallbackId: string, dayKey: string): PlannerTask {
   return {
     id: row.taskId ?? fallbackId,
     title: row.title,
@@ -937,6 +998,7 @@ function createPlannerTaskFromRow(row: TaskRow, fallbackId: string): PlannerTask
     time: row.time,
     detailColor: row.detailColor,
     priorityDismissed: row.priorityDismissed,
+    createdAt: getPlannerDayCreatedAt(dayKey),
     updatedAt: new Date().toISOString(),
   };
 }
@@ -952,7 +1014,7 @@ function buildPlannerStateFromLegacyWeeks(weeks: Record<string, Record<string, T
           (isRowEmpty(row) ? null : `task-${typeof row.id === 'string' && row.id ? row.id : createEntityId('task')}`);
 
         if (taskId) {
-          state.tasks[taskId] = createPlannerTaskFromRow(row, taskId);
+          state.tasks[taskId] = createPlannerTaskFromRow(row, taskId, dayKey);
         }
 
         const context = buildPlacementContext(dayKey);
@@ -984,6 +1046,7 @@ function normalizePlannerState(raw: PlannerState): PlannerState {
       time: typeof task.time === 'string' ? task.time : '',
       detailColor: normalizeDetailColor(task.detailColor),
       priorityDismissed: Boolean(task.priorityDismissed),
+      createdAt: typeof task.createdAt === 'string' && task.createdAt ? task.createdAt : new Date().toISOString(),
       updatedAt: typeof task.updatedAt === 'string' && task.updatedAt ? task.updatedAt : new Date().toISOString(),
     };
   }
@@ -1350,6 +1413,7 @@ function getNotePreview(notes: string) {
   }
 
   return notes
+    .replace(/&nbsp;/g, ' ')
     .replace(/<li>/g, '• ')
     .replace(/<\/li>/g, ' ')
     .replace(/<br\s*\/?>/g, ' ')
@@ -1735,6 +1799,7 @@ function App() {
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isPlannerViewMenuOpen, setIsPlannerViewMenuOpen] = useState(false);
   const [isOngoingProjectsOpen, setIsOngoingProjectsOpen] = useState(false);
+  const [isUnassignedOpen, setIsUnassignedOpen] = useState(false);
   const [isMobileHeaderMenuOpen, setIsMobileHeaderMenuOpen] = useState(false);
   const [visibleYear, setVisibleYear] = useState(() => new Date().getFullYear());
   const [visibleMonthDate, setVisibleMonthDate] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
@@ -1750,6 +1815,7 @@ function App() {
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const plannerViewMenuRef = useRef<HTMLDivElement | null>(null);
   const ongoingProjectsMenuRef = useRef<HTMLDivElement | null>(null);
+  const unassignedMenuRef = useRef<HTMLDivElement | null>(null);
   const searchMenuRef = useRef<HTMLDivElement | null>(null);
   const mobileHeaderMenuRef = useRef<HTMLDivElement | null>(null);
   const miscInboxInputRef = useRef<HTMLInputElement | null>(null);
@@ -1780,14 +1846,18 @@ function App() {
   const activityMap = useMemo(() => buildActivityMap(savedWeeks), [savedWeeks]);
   const searchResults = useMemo(() => buildSearchResults(savedWeeks, searchQuery, language, textForm), [savedWeeks, searchQuery, language, textForm]);
   const ongoingProjectTargets = useMemo(() => buildOngoingProjectTargets(plannerState), [plannerState]);
-  const linkedOngoingProjects = useMemo(
-    () => ongoingProjects.filter((project) => ongoingProjectTargets.has(project.id)),
-    [ongoingProjects, ongoingProjectTargets],
-  );
+  const linkedOngoingProjects = ongoingProjects;
   const userDisplayName = useMemo(() => getUserDisplayName(user), [user]);
   const userInitials = useMemo(() => getUserInitials(user), [user]);
   const miscTasks = miscTasksByWeek[weekKey] ?? [];
   const hasReachedMiscTaskLimit = miscTasks.length >= MAX_MISC_TASKS;
+  const hasMiscTaskStartedTyping = miscTaskInput.length > 0 && !hasReachedMiscTaskLimit;
+  const miscTaskHint =
+    hasMiscTaskStartedTyping
+      ? miscTaskInput.includes(' ')
+        ? ui.miscTasksSubmitHint
+        : ui.miscTasksTypedHint
+      : null;
   const accountModeLabel = user && isSupabaseConfigured ? ui.cloudMode : isSupabaseConfigured ? ui.demoMode : ui.localMode;
   const accountPanelTitle = user ? userDisplayName : ui.demoModeTitle;
   const accountPanelCopy = user
@@ -1796,6 +1866,7 @@ function App() {
       ? ui.demoModeCopy
       : ui.enableCloudSync;
   const accountAvatarInitials = user ? userInitials : 'DN';
+  const shouldShowDemoUi = isSupabaseConfigured && hasResolvedAuthState && !user;
   const resolvedTheme = theme === 'auto' ? resolveThemeByLocalTime(new Date(themeClock)) : theme;
 
   function clearSaveStateTimeout() {
@@ -2266,6 +2337,10 @@ function App() {
         setIsOngoingProjectsOpen(false);
       }
 
+      if (!unassignedMenuRef.current?.contains(event.target as Node)) {
+        setIsUnassignedOpen(false);
+      }
+
       if (!searchMenuRef.current?.contains(event.target as Node)) {
         setIsSearchOpen(false);
       }
@@ -2277,6 +2352,7 @@ function App() {
         setIsAccountMenuOpen(false);
         setIsPlannerViewMenuOpen(false);
         setIsOngoingProjectsOpen(false);
+        setIsUnassignedOpen(false);
         setIsSearchOpen(false);
       }
     }
@@ -2308,6 +2384,8 @@ function App() {
       }
 
       event.preventDefault();
+      setIsOngoingProjectsOpen(false);
+      setIsUnassignedOpen(false);
       setIsSearchOpen((current) => !current);
     }
 
@@ -2471,6 +2549,7 @@ function App() {
         time: seed?.time ?? '',
         detailColor: seed?.detailColor ?? 'default',
         priorityDismissed: seed?.priorityDismissed ?? false,
+        createdAt: seed?.createdAt ?? getPlannerDayCreatedAt(dayKey),
         updatedAt: new Date().toISOString(),
       };
     }
@@ -2511,6 +2590,7 @@ function App() {
         time: '',
         detailColor: 'default',
         priorityDismissed: false,
+        createdAt: getPlannerDayCreatedAt(dayKey),
         updatedAt: new Date().toISOString(),
       };
       const materializedTask = {
@@ -2830,39 +2910,6 @@ function App() {
       return;
     }
 
-    const wasEmpty = row.title.trim() === '';
-    const isNowFilled = nextTitle.trim() !== '';
-    const isNowCleared = nextTitle.trim() === '';
-
-    if (wasEmpty && isNowFilled) {
-      updatePlannerTask(dayKey, rowId, {
-        title: nextTitle,
-        notes: '',
-        ongoingProjectId: null,
-        status: 'none',
-        time: '',
-        detailColor: 'default',
-        priorityDismissed: false,
-      });
-      return;
-    }
-
-    if (isNowCleared) {
-      if (row.ongoingProjectId) {
-        deleteOngoingProject(row.ongoingProjectId);
-      }
-      updatePlannerTask(dayKey, rowId, {
-        title: nextTitle,
-        notes: '',
-        ongoingProjectId: null,
-        status: 'none',
-        time: '',
-        detailColor: 'default',
-        priorityDismissed: false,
-      });
-      return;
-    }
-
     updateRow(dayKey, rowId, 'title', nextTitle);
   }
 
@@ -2874,9 +2921,11 @@ function App() {
   }
 
   function openNotesEditor(dayKey: string, row: TaskRow) {
+    const task = row.taskId ? plannerStateRef.current.tasks[row.taskId] : null;
     setActiveNotesEditor({
       dayKey,
       rowId: row.id,
+      createdAt: task?.createdAt ?? getPlannerDayCreatedAt(dayKey),
       taskTitle: row.title,
       notes: sanitizeNoteHtml(row.notes),
       ongoingProjectId: row.ongoingProjectId,
@@ -3092,8 +3141,14 @@ function updateActiveTaskTitle(title: string) {
       return;
     }
 
-    if (activeNotesEditor.ongoingProjectId) {
-      deleteOngoingProject(activeNotesEditor.ongoingProjectId);
+    const currentWeekKey = getWeekKeyForDayKey(activeNotesEditor.dayKey);
+    const currentRow = (savedWeeks[currentWeekKey]?.[activeNotesEditor.dayKey] ?? []).find(
+      (row) => row.id === activeNotesEditor.rowId,
+    );
+    const linkedProjectId = currentRow?.ongoingProjectId ?? activeNotesEditor.ongoingProjectId;
+
+    if (linkedProjectId) {
+      deleteOngoingProject(linkedProjectId);
       setActiveNotesEditor((current) => (current ? { ...current, ongoingProjectId: null } : current));
       updateRowFields(activeNotesEditor.dayKey, activeNotesEditor.rowId, {
         ongoingProjectId: null,
@@ -3254,9 +3309,28 @@ function updateActiveTaskTitle(title: string) {
       return;
     }
 
+    const targetRows = savedWeeks[target.weekKey]?.[target.dayKey] ?? [];
+    const targetRow = targetRows.find((row) => row.id === target.rowId);
+
     setWeekStart(parseWeekKey(target.weekKey));
     setActiveSearchRowId(target.rowId);
     setIsOngoingProjectsOpen(false);
+
+    if (targetRow) {
+      const task = targetRow.taskId ? plannerStateRef.current.tasks[targetRow.taskId] : null;
+      setActiveNotesEditor({
+        dayKey: target.dayKey,
+        rowId: targetRow.id,
+        createdAt: task?.createdAt ?? getPlannerDayCreatedAt(target.dayKey),
+        taskTitle: targetRow.title,
+        notes: sanitizeNoteHtml(targetRow.notes),
+        ongoingProjectId: targetRow.ongoingProjectId,
+        status: targetRow.status,
+        time: targetRow.time,
+        detailColor: targetRow.detailColor,
+        priorityDismissed: targetRow.priorityDismissed,
+      });
+    }
   }
 
   useEffect(() => {
@@ -3342,11 +3416,20 @@ function updateActiveTaskTitle(title: string) {
     <div className="app-shell">
       {authMessage ? <p className="status-banner">{authMessage}</p> : null}
       {storageError ? <p className="status-banner status-banner-error">{storageError}</p> : null}
-      {showWeekLoadingBanner ? <p className="status-banner">{ui.loadingWeek}</p> : null}
 
       <header className="top-actions">
         <div className={`top-toolbar ${isMobileHeaderMenuOpen ? 'is-mobile-menu-open' : ''}`}>
-          <div className="top-toolbar-brand">{ui.appName}</div>
+          <div className="mobile-account-shell">
+            <button
+              type="button"
+              className={`account-trigger mobile-account-trigger ${isAccountMenuOpen ? 'is-open' : ''}`}
+              onClick={() => setIsAccountMenuOpen((current) => !current)}
+              aria-label={ui.openAccount}
+              aria-expanded={isAccountMenuOpen}
+            >
+              <span>{accountAvatarInitials}</span>
+            </button>
+          </div>
 
           <div className="top-toolbar-menu-shell" ref={mobileHeaderMenuRef}>
             <button
@@ -3411,7 +3494,11 @@ function updateActiveTaskTitle(title: string) {
                     <button
                       type="button"
                       className="nav-button ongoing-projects-trigger"
-                      onClick={() => setIsOngoingProjectsOpen((current) => !current)}
+                      onClick={() => {
+                        setIsSearchOpen(false);
+                        setIsUnassignedOpen(false);
+                        setIsOngoingProjectsOpen((current) => !current);
+                      }}
                       aria-expanded={isOngoingProjectsOpen}
                       aria-label={ui.ongoingProjectsTitle}
                     >
@@ -3423,12 +3510,21 @@ function updateActiveTaskTitle(title: string) {
                         projects={linkedOngoingProjects}
                         targets={ongoingProjectTargets}
                         onPickProject={jumpToOngoingProject}
+                        onRemoveProject={deleteOngoingProject}
                       />
                     ) : null}
                   </div>
 
                   <div className="search-menu-shell" ref={searchMenuRef}>
-                    <button type="button" className="nav-button search-trigger-button" onClick={() => setIsSearchOpen((current) => !current)}>
+                    <button
+                      type="button"
+                      className="nav-button search-trigger-button"
+                      onClick={() => {
+                        setIsOngoingProjectsOpen(false);
+                        setIsUnassignedOpen(false);
+                        setIsSearchOpen((current) => !current);
+                      }}
+                    >
                       {ui.search}
                     </button>
                     {isSearchOpen ? (
@@ -3445,17 +3541,52 @@ function updateActiveTaskTitle(title: string) {
                       />
                     ) : null}
                   </div>
+
+                  <div className="unassigned-menu-shell" ref={unassignedMenuRef}>
+                    <button
+                      type="button"
+                      className="nav-button unassigned-trigger-button"
+                      onClick={() => {
+                        setIsOngoingProjectsOpen(false);
+                        setIsSearchOpen(false);
+                        setIsUnassignedOpen((current) => !current);
+                      }}
+                      aria-expanded={isUnassignedOpen}
+                      aria-label={ui.unassignedTitle}
+                    >
+                      {ui.unassigned}
+                    </button>
+                    {isUnassignedOpen ? (
+                      <UnassignedDropdown
+                        ui={ui}
+                        tasks={miscTasks}
+                        draggedMiscTaskId={draggedMiscTaskId}
+                        onDeleteTask={deleteMiscTask}
+                        onSetDraggedMiscTaskId={setDraggedMiscTaskId}
+                      />
+                    ) : null}
+                  </div>
                 </div>
               </div>
 
               <div className="top-toolbar-summary">
-                {isSupabaseConfigured && user && saveState !== 'idle' ? (
-                  <span className={`save-indicator save-indicator-${saveState}`}>
-                    {saveState === 'saving' ? ui.savingStatus : ui.savedStatus}
+                {isSupabaseConfigured && user && (showWeekLoadingBanner || saveState !== 'idle') ? (
+                  <span
+                    className={`save-indicator ${
+                      showWeekLoadingBanner
+                        ? 'save-indicator-loading'
+                        : `save-indicator-${saveState}`
+                    }`}
+                  >
+                    {showWeekLoadingBanner
+                      ? ui.loadingWeek
+                      : saveState === 'saving'
+                        ? ui.savingStatus
+                        : ui.savedStatus}
                   </span>
                 ) : null}
 
-                {isSupabaseConfigured && !user ? (
+                {shouldShowDemoUi ? (
                   <button
                     type="button"
                     className="nav-button demo-signup-button"
@@ -3593,7 +3724,7 @@ function updateActiveTaskTitle(title: string) {
                             {ui.signOut}
                           </button>
                         </div>
-                      ) : isSupabaseConfigured ? (
+                      ) : shouldShowDemoUi ? (
                         <div className="account-menu-section">
                           <div className="account-menu-demo-actions">
                             <button
@@ -3643,7 +3774,7 @@ function updateActiveTaskTitle(title: string) {
                 addMiscTask();
               }}
             >
-              <div className="misc-inbox-input-shell">
+              <div className={`misc-inbox-input-shell ${miscTaskHint ? 'has-typed-hint' : ''}`}>
                 <input
                   ref={miscInboxInputRef}
                   className="misc-inbox-input"
@@ -3657,14 +3788,14 @@ function updateActiveTaskTitle(title: string) {
                   aria-label={ui.miscTasksTitle}
                   disabled={hasReachedMiscTaskLimit}
                 />
-                {miscTaskInput.trim() && !hasReachedMiscTaskLimit ? <span className="misc-inbox-typed-hint">{ui.miscTasksTypedHint}</span> : null}
+                {miscTaskHint ? <span className="misc-inbox-typed-hint">{miscTaskHint}</span> : null}
               </div>
             </form>
           </div>
         </div>
       </header>
 
-      {isSupabaseConfigured && !user ? (
+      {shouldShowDemoUi ? (
         <div className="demo-mode-strip">
           <p className="top-toolbar-demo-badge">{ui.demoModeBanner}</p>
         </div>
@@ -3865,45 +3996,12 @@ function updateActiveTaskTitle(title: string) {
         </main>
       )}
 
-      <section className="misc-inbox-shell">
-        <div className="misc-task-list">
-          {miscTasks.length > 0 ? (
-            miscTasks.map((task) => (
-              <div
-                key={task.id}
-                className={`misc-task-chip ${draggedMiscTaskId === task.id ? 'is-dragging' : ''}`}
-                draggable
-                onDragStart={(event) => {
-                  event.dataTransfer.setData('text/plain', task.id);
-                  event.dataTransfer.effectAllowed = 'move';
-                  setDraggedMiscTaskId(task.id);
-                }}
-                onDragEnd={() => setDraggedMiscTaskId(null)}
-              >
-                <span className="misc-task-text">{task.text}</span>
-                <span className="misc-task-actions" aria-hidden="true">
-                  <span className="misc-task-drag">drag</span>
-                  <button
-                    type="button"
-                    className="misc-task-delete"
-                    onClick={() => deleteMiscTask(task.id)}
-                    aria-label={ui.deleteMiscTask}
-                  >
-                    ×
-                  </button>
-                </span>
-              </div>
-            ))
-          ) : (
-            <div className="misc-task-empty">{ui.miscTasksEmpty}</div>
-          )}
-        </div>
-      </section>
-
       {activeNotesEditor ? (
         <NotesDialog
           activeNotesEditor={activeNotesEditor}
           ui={ui}
+          language={language}
+          textForm={textForm}
           onClose={closeNotesEditor}
           onChangeTaskTitle={updateActiveTaskTitle}
           onChangeNotes={updateActiveNotes}
@@ -4392,6 +4490,8 @@ function DaySection({
 type NotesDialogProps = {
   activeNotesEditor: ActiveNotesEditor;
   ui: UiText;
+  language: LanguageCode;
+  textForm: TextForm;
   onClose: () => void;
   onChangeTaskTitle: (title: string) => void;
   onChangeNotes: (notes: string) => void;
@@ -4443,6 +4543,15 @@ type OngoingProjectsDropdownProps = {
   projects: OngoingProject[];
   targets: Map<string, OngoingProjectTarget>;
   onPickProject: (projectId: string) => void;
+  onRemoveProject: (projectId: string) => void;
+};
+
+type UnassignedDropdownProps = {
+  ui: UiText;
+  tasks: MiscTask[];
+  draggedMiscTaskId: string | null;
+  onDeleteTask: (taskId: string) => void;
+  onSetDraggedMiscTaskId: (taskId: string | null) => void;
 };
 
 type YearlyPlannerProps = {
@@ -4539,7 +4648,10 @@ function CustomStatusDialog({ activeStatusEditor, ui, onClose, onSave }: CustomS
         </div>
 
         <div className="meta-dialog-actions">
-          <p className="meta-dialog-hint">{ui.applyShortcutHint}</p>
+          <div className="meta-dialog-hint-stack">
+            <p className="meta-dialog-hint">{ui.chooseWithArrowKeysHint}</p>
+            <p className="meta-dialog-hint">{ui.applyShortcutHint}</p>
+          </div>
           <button type="button" className="nav-button" onClick={onClose}>
             {ui.customStatusCancel}
           </button>
@@ -4557,6 +4669,9 @@ function PriorityDialog({ activePriorityPicker, ui, onClose, onApply, onCustom }
     ? (activePriorityPicker.value as (typeof PRESET_PRIORITY_OPTIONS)[number])
     : null;
   const [selectedOption, setSelectedOption] = useState<(typeof PRESET_PRIORITY_OPTIONS)[number] | null>(initialSelection);
+  const [isCustomSelected, setIsCustomSelected] = useState(!initialSelection && Boolean(activePriorityPicker.value));
+  const [hasUsedArrowKeys, setHasUsedArrowKeys] = useState(false);
+  const priorityOptions = [...PRESET_PRIORITY_OPTIONS, 'custom'] as const;
 
   useEffect(() => {
     setSelectedOption(
@@ -4564,6 +4679,8 @@ function PriorityDialog({ activePriorityPicker, ui, onClose, onApply, onCustom }
         ? (activePriorityPicker.value as (typeof PRESET_PRIORITY_OPTIONS)[number])
         : null,
     );
+    setIsCustomSelected(!PRESET_PRIORITY_OPTIONS.includes(activePriorityPicker.value as (typeof PRESET_PRIORITY_OPTIONS)[number]) && Boolean(activePriorityPicker.value));
+    setHasUsedArrowKeys(false);
   }, [activePriorityPicker]);
 
   useEffect(() => {
@@ -4574,6 +4691,64 @@ function PriorityDialog({ activePriorityPicker, ui, onClose, onApply, onCustom }
         return;
       }
 
+      if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        setHasUsedArrowKeys(true);
+        if (isCustomSelected) {
+          setIsCustomSelected(false);
+          setSelectedOption('none');
+          return;
+        }
+        setSelectedOption((current) => {
+          const currentValue = current ?? 'none';
+          const currentIndex = priorityOptions.indexOf(currentValue);
+          const nextValue = priorityOptions[(currentIndex + 1) % priorityOptions.length];
+          if (nextValue === 'custom') {
+            setIsCustomSelected(true);
+            return null;
+          }
+          setIsCustomSelected(false);
+          return nextValue;
+        });
+        return;
+      }
+
+      if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+        event.preventDefault();
+        setHasUsedArrowKeys(true);
+        if (isCustomSelected) {
+          setIsCustomSelected(false);
+          setSelectedOption('done');
+          return;
+        }
+        setSelectedOption((current) => {
+          const currentValue = current ?? 'none';
+          const currentIndex = priorityOptions.indexOf(currentValue);
+          const nextValue = priorityOptions[(currentIndex - 1 + priorityOptions.length) % priorityOptions.length];
+          if (nextValue === 'custom') {
+            setIsCustomSelected(true);
+            return null;
+          }
+          setIsCustomSelected(false);
+          return nextValue;
+        });
+        return;
+      }
+
+      if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey) {
+        if (isCustomSelected) {
+          event.preventDefault();
+          onCustom();
+          return;
+        }
+
+        if (selectedOption) {
+          event.preventDefault();
+          onApply(selectedOption);
+          return;
+        }
+      }
+
       if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && selectedOption) {
         event.preventDefault();
         onApply(selectedOption);
@@ -4582,7 +4757,7 @@ function PriorityDialog({ activePriorityPicker, ui, onClose, onApply, onCustom }
 
     document.addEventListener('keydown', handleKeydown);
     return () => document.removeEventListener('keydown', handleKeydown);
-  }, [onApply, onClose, selectedOption]);
+  }, [isCustomSelected, onApply, onClose, onCustom, priorityOptions, selectedOption]);
 
   return (
     <div className="dialog-backdrop" role="presentation">
@@ -4620,13 +4795,18 @@ function PriorityDialog({ activePriorityPicker, ui, onClose, onApply, onCustom }
                       : ui.statusDone}
             </button>
           ))}
-          <button type="button" className="priority-menu-item detail-custom" onClick={onCustom}>
+          <button type="button" className={`priority-menu-item detail-custom ${isCustomSelected ? 'is-active' : ''}`} onClick={onCustom}>
             {ui.statusCustom}
           </button>
         </div>
 
         <div className="meta-dialog-actions">
-          <p className="meta-dialog-hint">{ui.applyShortcutHint}</p>
+          <div className="meta-dialog-hint-stack">
+            <p className="meta-dialog-hint">
+              {hasUsedArrowKeys ? 'chosen with arrow keys' : ui.chooseWithArrowKeysHint}
+            </p>
+            {hasUsedArrowKeys ? <p className="meta-dialog-hint">{ui.applyShortcutHint}</p> : null}
+          </div>
           <button type="button" className="nav-button" onClick={onClose}>
             {ui.customStatusCancel}
           </button>
@@ -4838,7 +5018,7 @@ function SearchDropdown({ ui, query, results, onClose, onChangeQuery, onPickResu
   );
 }
 
-function OngoingProjectsDropdown({ ui, projects, targets, onPickProject }: OngoingProjectsDropdownProps) {
+function OngoingProjectsDropdown({ ui, projects, targets, onPickProject, onRemoveProject }: OngoingProjectsDropdownProps) {
   useEffect(() => {
     function handleKeydown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
@@ -4862,18 +5042,29 @@ function OngoingProjectsDropdown({ ui, projects, targets, onPickProject }: Ongoi
       <div className="ongoing-projects-list">
         {projects.length > 0 ? (
           projects.map((project) => (
-            <button
-              key={project.id}
-              type="button"
-              className="ongoing-project-card ongoing-project-link"
-              onClick={() => onPickProject(project.id)}
-              disabled={!targets.has(project.id)}
-            >
+            <div key={project.id} className="ongoing-project-card">
               <div className="ongoing-project-card-header">
                 <span className="ongoing-project-title-text">{project.title || ui.ongoingProjectTitlePlaceholder}</span>
+                <button
+                  type="button"
+                  className="ongoing-project-remove"
+                  onClick={() => onRemoveProject(project.id)}
+                  aria-label={ui.deleteOngoingProject}
+                >
+                  ×
+                </button>
               </div>
-              <p className="ongoing-project-notes-text">{project.notes || ui.ongoingProjectNotesPlaceholder}</p>
-            </button>
+              <button
+                type="button"
+                className="ongoing-project-link"
+                onClick={() => onPickProject(project.id)}
+                disabled={!targets.has(project.id)}
+              >
+                <p className="ongoing-project-notes-text">
+                  {project.notes.trim() ? getNotePreview(project.notes) : ui.ongoingProjectNotesPlaceholder}
+                </p>
+              </button>
+            </div>
           ))
         ) : (
           <div className="ongoing-projects-empty">{ui.ongoingProjectsEmpty}</div>
@@ -4883,9 +5074,53 @@ function OngoingProjectsDropdown({ ui, projects, targets, onPickProject }: Ongoi
   );
 }
 
+function UnassignedDropdown({ ui, tasks, draggedMiscTaskId, onDeleteTask, onSetDraggedMiscTaskId }: UnassignedDropdownProps) {
+  return (
+    <div className="unassigned-dropdown" role="dialog" aria-label={ui.unassignedTitle}>
+      <div className="unassigned-dropdown-header">
+        <p className="dialog-label">{ui.unassignedTitle}</p>
+        <p className="account-menu-copy">{ui.unassignedCopy}</p>
+      </div>
+
+      <div className="unassigned-dropdown-list">
+        {tasks.length > 0 ? (
+          tasks.map((task) => (
+            <div
+              key={task.id}
+              className={`misc-task-chip ${draggedMiscTaskId === task.id ? 'is-dragging' : ''}`}
+              draggable
+              onDragStart={(event) => {
+                event.dataTransfer.setData('text/plain', task.id);
+                event.dataTransfer.effectAllowed = 'move';
+                onSetDraggedMiscTaskId(task.id);
+              }}
+              onDragEnd={() => onSetDraggedMiscTaskId(null)}
+            >
+              <span className="misc-task-text">{task.text}</span>
+              <span className="misc-task-actions" aria-hidden="true">
+                <span className="misc-task-drag">drag</span>
+                <button
+                  type="button"
+                  className="misc-task-delete"
+                  onClick={() => onDeleteTask(task.id)}
+                  aria-label={ui.deleteMiscTask}
+                >
+                  ×
+                </button>
+              </span>
+            </div>
+          ))
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function NotesDialog({
   activeNotesEditor,
   ui,
+  language,
+  textForm,
   onClose,
   onChangeTaskTitle,
   onChangeNotes,
@@ -4896,19 +5131,40 @@ function NotesDialog({
 }: NotesDialogProps) {
   const dialogRef = useRef<HTMLElement | null>(null);
   const editorRef = useRef<HTMLDivElement | null>(null);
+  const dragStateRef = useRef<{ pointerId: number; offsetX: number; offsetY: number } | null>(null);
+  const editorSessionKey = `${activeNotesEditor.dayKey}:${activeNotesEditor.rowId}`;
   const [activeFormats, setActiveFormats] = useState({
     bold: false,
     italic: false,
+    underline: false,
+    strike: false,
     unorderedList: false,
-    block: 'body' as 'body' | 'large',
+    orderedList: false,
+    block: 'body' as 'body' | 'large' | 'title' | 'code',
   });
+  const [windowPosition, setWindowPosition] = useState<{ x: number; y: number } | null>(null);
+  const plannerDayLabel = formatPlannerDayLabel(activeNotesEditor.dayKey, language, textForm);
+  const createdDateLabel = activeNotesEditor.createdAt
+    ? formatPlannerDateLabel(activeNotesEditor.createdAt, language, textForm)
+    : '';
+  const shouldShowCreatedDate =
+    Boolean(createdDateLabel) && createdDateLabel !== plannerDayLabel;
 
   useEffect(() => {
     const sanitizedNotes = sanitizeNoteHtml(activeNotesEditor.notes);
     if (editorRef.current && editorRef.current.innerHTML !== sanitizedNotes) {
       editorRef.current.innerHTML = sanitizedNotes;
     }
-  }, [activeNotesEditor]);
+  }, [editorSessionKey]);
+
+  useEffect(() => {
+    const width = Math.min(Math.max(window.innerWidth - 32, 320), 860);
+    const height = Math.min(Math.max(window.innerHeight - 48, 320), 720);
+    setWindowPosition({
+      x: Math.max(16, Math.round((window.innerWidth - width) / 2)),
+      y: Math.max(16, Math.round((window.innerHeight - height) / 2)),
+    });
+  }, [editorSessionKey]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -4928,7 +5184,7 @@ function NotesDialog({
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [activeNotesEditor]);
+  }, [editorSessionKey]);
 
   useEffect(() => {
     function updateActiveFormats() {
@@ -4949,8 +5205,18 @@ function NotesDialog({
           ? (anchorNode as HTMLElement)
           : anchorNode.parentElement;
 
-      let block: 'body' | 'large' = 'body';
+      let block: 'body' | 'large' | 'title' | 'code' = 'body';
       while (element && element !== editor) {
+        if (element.tagName === 'PRE') {
+          block = 'code';
+          break;
+        }
+
+        if (element.tagName === 'H2') {
+          block = 'title';
+          break;
+        }
+
         if (element.tagName === 'H3') {
           block = 'large';
           break;
@@ -4966,7 +5232,10 @@ function NotesDialog({
       setActiveFormats({
         bold: document.queryCommandState('bold'),
         italic: document.queryCommandState('italic'),
+        underline: document.queryCommandState('underline'),
+        strike: document.queryCommandState('strikeThrough'),
         unorderedList: document.queryCommandState('insertUnorderedList'),
+        orderedList: document.queryCommandState('insertOrderedList'),
         block,
       });
     }
@@ -4979,6 +5248,19 @@ function NotesDialog({
     function handleKeydown(event: KeyboardEvent) {
       const dialog = dialogRef.current;
       const editor = editorRef.current;
+      const selection = window.getSelection();
+      const range =
+        selection && selection.rangeCount > 0
+          ? selection.getRangeAt(0)
+          : null;
+      const selectionInEditor =
+        Boolean(editor && range && editor.contains(range.commonAncestorContainer));
+      const anchorElement = selection?.anchorNode
+        ? selection.anchorNode.nodeType === Node.ELEMENT_NODE
+          ? (selection.anchorNode as HTMLElement)
+          : selection.anchorNode.parentElement
+        : null;
+      const activeListItem = anchorElement?.closest('li');
 
       if (isSubdialogOpen) {
         return;
@@ -4990,6 +5272,83 @@ function NotesDialog({
         return;
       }
 
+      if (selectionInEditor && (event.metaKey || event.ctrlKey)) {
+        const lowerKey = event.key.toLowerCase();
+
+        if (lowerKey === 'b') {
+          event.preventDefault();
+          exec('bold');
+          return;
+        }
+
+        if (lowerKey === 'i') {
+          event.preventDefault();
+          exec('italic');
+          return;
+        }
+
+        if (lowerKey === 'u') {
+          event.preventDefault();
+          exec('underline');
+          return;
+        }
+
+        if (lowerKey === 'z') {
+          event.preventDefault();
+          exec(event.shiftKey ? 'redo' : 'undo');
+          return;
+        }
+
+        if (lowerKey === 'y') {
+          event.preventDefault();
+          exec('redo');
+          return;
+        }
+      }
+
+      if (
+        selectionInEditor &&
+        event.key === ' ' &&
+        range &&
+        range.collapsed &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey
+      ) {
+        const blockCandidate =
+          anchorElement?.closest('p, div, h2, h3') ??
+          (editor && (anchorElement === editor || !anchorElement) ? editor : null);
+        const marker = blockCandidate?.textContent?.replace(/\u00A0/g, ' ').trim() ?? '';
+
+        if (marker === '-' || marker === '*') {
+          event.preventDefault();
+          if (blockCandidate) {
+            blockCandidate.textContent = '';
+          }
+          const nextRange = document.createRange();
+          nextRange.selectNodeContents(blockCandidate ?? editor!);
+          nextRange.collapse(true);
+          selection?.removeAllRanges();
+          selection?.addRange(nextRange);
+          exec('insertUnorderedList');
+          return;
+        }
+
+        if (/^\d+\.$/.test(marker)) {
+          event.preventDefault();
+          if (blockCandidate) {
+            blockCandidate.textContent = '';
+          }
+          const nextRange = document.createRange();
+          nextRange.selectNodeContents(blockCandidate ?? editor!);
+          nextRange.collapse(true);
+          selection?.removeAllRanges();
+          selection?.addRange(nextRange);
+          exec('insertOrderedList');
+          return;
+        }
+      }
+
       if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         onClose();
@@ -4997,8 +5356,32 @@ function NotesDialog({
       }
 
       if (event.key === 'Tab' && dialog) {
-        if (document.activeElement === editor && editor) {
+        if (selectionInEditor && editor) {
           event.preventDefault();
+
+          const blockCandidate =
+            anchorElement?.closest('p, div, h2, h3') ??
+            (editor && (anchorElement === editor || !anchorElement) ? editor : null);
+          const marker = blockCandidate?.textContent?.replace(/\u00A0/g, ' ').trim() ?? '';
+
+          if (!activeListItem && marker === '-' && !event.shiftKey) {
+            if (blockCandidate) {
+              blockCandidate.textContent = '';
+            }
+            const nextRange = document.createRange();
+            nextRange.selectNodeContents(blockCandidate ?? editor);
+            nextRange.collapse(true);
+            selection?.removeAllRanges();
+            selection?.addRange(nextRange);
+            exec('insertUnorderedList');
+            return;
+          }
+
+          if (activeListItem) {
+            exec(event.shiftKey ? 'outdent' : 'indent');
+            return;
+          }
+
           insertEditorText('\u00A0\u00A0\u00A0\u00A0');
           return;
         }
@@ -5039,6 +5422,40 @@ function NotesDialog({
     return () => document.removeEventListener('keydown', handleKeydown);
   }, [isSubdialogOpen, onChangeNotes, onClose]);
 
+  useEffect(() => {
+    function handlePointerMove(event: PointerEvent) {
+      if (!dragStateRef.current) {
+        return;
+      }
+
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const dialog = dialogRef.current;
+      const dialogWidth = dialog?.offsetWidth ?? 720;
+      const dialogHeight = dialog?.offsetHeight ?? 560;
+      const nextX = Math.min(Math.max(12, event.clientX - dragStateRef.current.offsetX), Math.max(12, viewportWidth - dialogWidth - 12));
+      const nextY = Math.min(Math.max(12, event.clientY - dragStateRef.current.offsetY), Math.max(12, viewportHeight - dialogHeight - 12));
+
+      setWindowPosition({
+        x: nextX,
+        y: nextY,
+      });
+    }
+
+    function handlePointerUp(event: PointerEvent) {
+      if (dragStateRef.current?.pointerId === event.pointerId) {
+        dragStateRef.current = null;
+      }
+    }
+
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, []);
+
   function exec(command: string, value?: string) {
     document.execCommand(command, false, value);
     if (editorRef.current) {
@@ -5049,6 +5466,25 @@ function NotesDialog({
       onChangeNotes(sanitizedNotes);
       editorRef.current.focus();
     }
+  }
+
+  function startDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement;
+    if (target.closest('button, input')) {
+      return;
+    }
+
+    const dialog = dialogRef.current;
+    if (!dialog) {
+      return;
+    }
+
+    const rect = dialog.getBoundingClientRect();
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    };
   }
 
   function insertEditorText(text: string) {
@@ -5083,7 +5519,7 @@ function NotesDialog({
   const customDetail = !isPresetStatus(activeNotesEditor.status) ? activeNotesEditor.status.trim() : '';
   const hasVisiblePriority = Boolean(customDetail || activeNotesEditor.status !== 'none');
   const shouldRevealPrompt = !hasVisiblePriority && !activeNotesEditor.priorityDismissed;
-  const priorityButtonLabel = hasVisiblePriority || shouldRevealPrompt
+  const priorityButtonLabel = hasVisiblePriority
     ? customDetail || getStatusLabel(activeNotesEditor.status, ui)
     : ui.statusSet;
   const priorityButtonClass = hasVisiblePriority
@@ -5097,18 +5533,23 @@ function NotesDialog({
   const ongoingButtonClass = activeNotesEditor.ongoingProjectId ? 'is-active' : '';
 
   return (
-    <div className="dialog-backdrop" role="presentation">
+    <div className="dialog-backdrop notes-window-layer" role="presentation">
       <section
         ref={dialogRef}
         className="notes-dialog"
         role="dialog"
-        aria-modal="true"
+        aria-modal="false"
         aria-labelledby="notes-dialog-title"
+        style={windowPosition ? { left: `${windowPosition.x}px`, top: `${windowPosition.y}px` } : undefined}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="notes-dialog-header">
-          <div>
+        <div className="notes-dialog-header" onPointerDown={startDrag}>
+          <div className="notes-dialog-title-wrap">
             <p className="dialog-label">{ui.taskNotes}</p>
+            <p className="notes-dialog-date">
+              <span>{ui.scheduledFor}: {plannerDayLabel}</span>
+              {shouldShowCreatedDate ? <span>{ui.createdOn}: {createdDateLabel}</span> : null}
+            </p>
             <input
               id="notes-dialog-title"
               className="notes-dialog-title-input"
@@ -5182,10 +5623,31 @@ function NotesDialog({
             </button>
             <button
               type="button"
+              className={`toolbar-button ${activeFormats.underline ? 'is-active' : ''}`}
+              onClick={() => exec('underline')}
+            >
+              U
+            </button>
+            <button
+              type="button"
+              className={`toolbar-button ${activeFormats.strike ? 'is-active' : ''}`}
+              onClick={() => exec('strikeThrough')}
+            >
+              S
+            </button>
+            <button
+              type="button"
               className={`toolbar-button ${activeFormats.unorderedList ? 'is-active' : ''}`}
               onClick={() => exec('insertUnorderedList')}
             >
               •
+            </button>
+            <button
+              type="button"
+              className={`toolbar-button ${activeFormats.orderedList ? 'is-active' : ''}`}
+              onClick={() => exec('insertOrderedList')}
+            >
+              1.
             </button>
             <button
               type="button"
@@ -5200,6 +5662,20 @@ function NotesDialog({
               onClick={() => exec('formatBlock', '<h3>')}
             >
               {ui.large}
+            </button>
+            <button
+              type="button"
+              className={`toolbar-button ${activeFormats.block === 'title' ? 'is-active' : ''}`}
+              onClick={() => exec('formatBlock', '<h2>')}
+            >
+              {ui.title}
+            </button>
+            <button
+              type="button"
+              className={`toolbar-button ${activeFormats.block === 'code' ? 'is-active' : ''}`}
+              onClick={() => exec('formatBlock', '<pre>')}
+            >
+              {'</>'}
             </button>
           </div>
           <p className="notes-dialog-hint">{ui.notesShortcutHint}</p>
