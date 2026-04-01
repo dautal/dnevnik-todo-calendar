@@ -1415,7 +1415,6 @@ function getNotePreview(notes: string) {
 
   return notes
     .replace(/&nbsp;/g, ' ')
-<<<<<<< ours
     .replace(/<(p|div|h1|h2|h3|ul|ol)[^>]*>/g, '\n')
     .replace(/<li[^>]*>/g, '\n• ')
     .replace(/<\/li>/g, '\n')
@@ -1427,14 +1426,6 @@ function getNotePreview(notes: string) {
     .replace(/\n[ \t]+/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .replace(/[ \t]{2,}/g, ' ')
-=======
-    .replace(/<li>/g, '• ')
-    .replace(/<\/li>/g, ' ')
-    .replace(/<br\s*\/?>/g, ' ')
-    .replace(/<\/(p|div|h1|h2|h3|ul|ol)>/g, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
->>>>>>> theirs
     .trim();
 }
 
